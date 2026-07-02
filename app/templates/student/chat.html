@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.name }} — Praeceptor{% endblock %}
+{% block content %}
+<header class="topbar">
+  <a href="/subjects">&larr; Subjects</a>
+  <span>{{ subject.name }} · {{ student.name }}</span>
+  <nav class="bar-actions">
+    <a href="/help">Help</a>
+    <a href="/logout">Log out</a>
+  </nav>
+</header>
+
+<div id="messages" class="messages" aria-live="polite">
+  {% for m in history %}{% include "student/_bubble.html" %}{% endfor %}
+</div>
+
+<form id="chat-form" class="chat-form"
+      method="post" action="/chat/{{ subject.id }}/send"
+      data-stream="/chat/{{ subject.id }}/stream">
+  <textarea name="message" rows="2" placeholder="Ask your {{ subject.name }} tutor…" required></textarea>
+  <button type="submit">Send</button>
+</form>
+<p class="chat-hint"><a href="/help#math">How do I type math? ›</a></p>
+{% endblock %}

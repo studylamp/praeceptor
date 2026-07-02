@@ -1,0 +1,31 @@
+# Secrets & local data — never commit these
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Deploy artifacts (built on demand, never committed)
+*.tar.gz
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local-only working notes — never committed
+PLAN.md
+
+# Local scratch / temp workspace — never committed
+.tmp/

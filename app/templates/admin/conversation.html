@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ conv.subject_name }} · {{ conv.student_name }} — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin/conversations">← Conversations</a></p>
+<h1>{{ conv.subject_name }}
+  <small class="muted">· {{ conv.student_name }}{% set a = conv | age_of %}{% if a is not none %} ({{ a }}){% endif %}</small></h1>
+{% if not conv.subject_active %}<p class="banner">This subject is currently inactive.</p>{% endif %}
+
+<div class="transcript">
+  {% for m in messages %}
+  <div class="bubble {{ 'student' if m.role == 'student' else 'tutor' }}{% if m.blocked %} blocked{% endif %}">
+    <div class="who">
+      {{ "Student" if m.role == "student" else "Tutor" }}
+      <span class="meta">{{ m.created_at | localdt }}{% if m.token_count %} · {{ m.token_count }} tok{% endif %}{% if m.gate_verdict %} · {{ m.gate_verdict }}{% endif %}{% if m.blocked %} · blocked{% endif %}</span>
+    </div>
+    {% if m.role == "tutor" %}
+      <div class="text md">{{ m.content | tutor_md }}</div>
+    {% else %}
+      <div class="text">{{ m.content }}</div>
+    {% endif %}
+    {% if m.gate_reason %}<div class="gate-reason">gate: {{ m.gate_reason }}</div>{% endif %}
+  </div>
+  {% else %}
+  <p>No messages in this conversation yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

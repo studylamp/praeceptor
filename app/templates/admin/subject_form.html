@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ "New subject" if creating else "Edit subject" }} — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin/students/{{ student.id }}">← {{ student.name }}</a></p>
+<h1>{% if creating %}Add subject for {{ student.name }}{% else %}Edit {{ vals.get('name','subject') }}{% endif %}</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" id="subject-form"
+      action="{% if creating %}/admin/students/{{ student.id }}/subjects{% else %}/admin/subjects/{{ subject.id }}{% endif %}"
+      class="form">
+  <div class="preset-bar">
+    <label>Start from a common subject
+      <select id="subject-preset">
+        <option value="">— Choose to prefill name, scope, style &amp; policy —</option>
+        {% for group, items in preset_groups %}
+        <optgroup label="{{ group }}">
+          {% for p in items %}
+          <option value="{{ p.key }}"
+                  data-name="{{ p.name }}"
+                  data-grade="{{ p.grade_level }}"
+                  data-scope="{{ p.gate_scope }}"
+                  data-style="{{ p.style }}"
+                  data-policy="{{ p.answer_policy }}">{{ p.name }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="button" class="link" id="subject-clear">Clear these fields</button>
+  </div>
+  <p class="muted">Presets just fill in starting values — edit anything before saving.</p>
+
+  <label>Name <input name="name" value="{{ vals.get('name','') or '' }}" required></label>
+  <label>Grade level <input name="grade_level" value="{{ vals.get('grade_level','') or '' }}"></label>
+  <label>Curriculum name <input name="curriculum_name" value="{{ vals.get('curriculum_name','') or '' }}"></label>
+  <label>Tutoring style
+    <textarea name="style" rows="2">{{ vals.get('style','') or '' }}</textarea></label>
+  <label>Answer policy
+    <textarea name="answer_policy" rows="2">{{ vals.get('answer_policy','') or '' }}</textarea></label>
+  <label>Gate scope <small>(what’s allowed — drives BOTH the gate and the tutor)</small>
+    <textarea name="gate_scope" rows="2">{{ vals.get('gate_scope','') or '' }}</textarea></label>
+  <label>Curriculum context <small>(where they are now; paste lesson notes)</small>
+    <textarea name="curriculum_context" rows="5">{{ vals.get('curriculum_context','') or '' }}</textarea></label>
+  <label>Worldview / framing notes for this subject <small>(optional; adds to the global framing in Settings)</small>
+    <textarea name="framing_supplement" rows="3">{{ vals.get('framing_supplement','') or '' }}</textarea></label>
+  <label>Tutor model
+    <input name="tutor_model" list="model-list" value="{{ vals.get('tutor_model','') or '' }}">
+    <datalist id="model-list">{% for m in models %}<option value="{{ m }}">{% endfor %}</datalist>
+  </label>
+  <label class="check"><input type="checkbox" name="tools_enabled" value="1" {{ "checked" if vals.get('tools_enabled') else "" }}>
+    Allow computation tools <small>(tutor runs sandboxed Python/sympy for exact math — recommended for math &amp; science)</small></label>
+  {% if not creating %}
+  <label class="check"><input type="checkbox" name="active" value="1" {{ "checked" if vals.get('active') else "" }}>
+    Active (students can use this subject)</label>
+  {% endif %}
+  <div class="actions">
+    <button type="submit">{{ "Create subject" if creating else "Save" }}</button>
+    <a href="/admin/students/{{ student.id }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

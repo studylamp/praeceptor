@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Chat test — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Chat test</h1>
+<p class="muted">A faithful dry run of the student experience: the gate decides whether
+  a message is on-topic (just as it would for the student), then the tutor replies, and
+  the conversation is kept so you can ask follow-ups. <strong>Nothing is saved and it
+  doesn't count toward caps.</strong> Use “New conversation” to start fresh. Good for
+  checking rich output (LaTeX, SVG diagrams) and how the gate and tutor behave.</p>
+
+<div id="messages" class="messages" aria-live="polite"></div>
+
+<form id="chat-form" class="chat-form test-chat-form"
+      method="post" action="/admin/test-chat/stream" data-stream="/admin/test-chat/stream"
+      data-clear="/admin/test-chat/clear">
+  <div class="test-controls">
+    <select name="subject_id" required aria-label="Subject (uses its tutor prompt and model)">
+      <option value="">— Pick a subject (uses its gate &amp; tutor prompt and model) —</option>
+      {% for o in options %}<option value="{{ o.id }}">{{ o.label }}</option>{% endfor %}
+    </select>
+    <button type="button" class="link" id="test-clear">New conversation</button>
+  </div>
+  <input type="hidden" name="history" value="[]">
+  <textarea name="message" rows="2"
+    placeholder="Ask a question, then follow up — e.g. “Graph y = x^2,” then “now shift it up 3.”" required></textarea>
+  <button type="submit">Send</button>
+</form>
+
+<details class="debug-log" open>
+  <summary>Debug log</summary>
+  <p class="muted">One record per turn: the gate verdict and, for an answered turn, the
+    tutor’s finish reason, token counts, and a <code>partial</code> flag (true if the
+    stream broke mid-reply — the classic cause of a cut-off answer). Cleared by “New
+    conversation.”</p>
+  <div id="debug-log"></div>
+</details>
+{% endblock %}

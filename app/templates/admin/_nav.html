@@ -1,0 +1,13 @@
+{# Admin top navigation. Included on every admin page except the login. #}
+{% set p = request.url.path %}
+<header class="topbar admin-nav">
+  <a class="brand" href="/admin">Praeceptor <span>admin</span></a>
+  <nav>
+    <a href="/admin" class="{{ 'active' if p == '/admin' else '' }}">Dashboard</a>
+    <a href="/admin/curriculum" class="{{ 'active' if p.startswith('/admin/curriculum') or '/context' in p else '' }}">Curriculum</a>
+    <a href="/admin/conversations" class="{{ 'active' if p.startswith('/admin/conversations') else '' }}">Conversations</a>
+    <a href="/admin/settings" class="{{ 'active' if p.startswith('/admin/settings') else '' }}">Settings</a>
+    <a href="/admin/test-chat" class="{{ 'active' if p.startswith('/admin/test-chat') else '' }}">Chat test</a>
+    <a href="/admin/logout" class="logout">Log out</a>
+  </nav>
+</header>

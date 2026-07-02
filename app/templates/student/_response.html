@@ -1,0 +1,17 @@
+{# The tutor's response to one message, varying by pipeline status. Rendered both
+   into the no-JS exchange partial and (for non-on_subject outcomes) as the SSE
+   `notice` event the streaming client swaps in. All values autoescaped; tutor
+   markdown goes through the sanitizing `tutor_md` filter. #}
+{% if result.status == "on_subject" %}
+<div class="bubble tutor">
+  <div class="who">Tutor</div>
+  <div class="text md">{{ result.reply | tutor_md }}</div>
+</div>
+{% elif result.status == "other_subject" %}
+<div class="bubble notice">
+  That looks like <strong>{{ result.suggested_subject }}</strong>, not this subject.
+  {% if switch_id %}<a href="/chat/{{ switch_id }}">Switch to {{ result.suggested_subject }} →</a>{% endif %}
+</div>
+{% else %}
+<div class="bubble notice">{{ result.message }}</div>
+{% endif %}

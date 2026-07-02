@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Help — Praeceptor{% endblock %}
+{% block content %}
+<header class="topbar">
+  <a href="/subjects">&larr; Subjects</a>
+  <span>Help</span>
+  <a href="/logout">Log out</a>
+</header>
+
+<h1>Using your tutor</h1>
+<p>Chat with your tutor the way you'd talk to a real one. Ask it to explain something,
+show a worked example, give you a practice problem, draw a graph, or quiz you. Stick to
+the subject you picked — if you need a different one, go back to <a href="/subjects">Subjects</a>
+and choose it.</p>
+
+<h2 id="math">Writing math questions</h2>
+<p><strong>You can always just use words.</strong> Type
+<em>“what is the square root of x plus one, all over two?”</em> and the tutor will
+understand. It also writes the math back to you neatly, so you can check it understood
+your question.</p>
+<p>When you want to be exact, here are the shortcuts most people use — starting simple
+and building up.</p>
+
+<h3>The basics</h3>
+<table class="guide">
+  <thead><tr><th>To write…</th><th>Type this</th><th>It looks like</th></tr></thead>
+  <tbody>
+    <tr><td>Add &amp; subtract</td><td><code>3 + 4</code>, <code>10 - 2</code></td><td><span class="math">3+4 \quad 10-2</span></td></tr>
+    <tr><td>Multiply</td><td><code>3 * 4</code></td><td><span class="math">3 \times 4</span></td></tr>
+    <tr><td>Divide / fraction</td><td><code>3 / 4</code></td><td><span class="math">\frac{3}{4}</span></td></tr>
+    <tr><td>Powers (exponents)</td><td><code>x^2</code>, <code>2^5</code></td><td><span class="math">x^2 \quad 2^5</span></td></tr>
+    <tr><td>Square root</td><td><code>sqrt(16)</code></td><td><span class="math">\sqrt{16}</span></td></tr>
+    <tr><td>Group with parentheses</td><td><code>(2 + 3) * 4</code></td><td><span class="math">(2+3)\times 4</span></td></tr>
+  </tbody>
+</table>
+
+<h3>A bit more</h3>
+<table class="guide">
+  <thead><tr><th>To write…</th><th>Type this</th><th>It looks like</th></tr></thead>
+  <tbody>
+    <tr><td>A fraction of a sum<br><small class="muted">wrap the top and bottom in parentheses</small></td><td><code>(x + 1) / (x - 2)</code></td><td><span class="math">\frac{x+1}{x-2}</span></td></tr>
+    <tr><td>Cube &amp; other roots</td><td><code>8^(1/3)</code>, or “cube root of 8”</td><td><span class="math">\sqrt[3]{8}</span></td></tr>
+    <tr><td>Subscripts</td><td><code>x_1</code>, <code>a_n</code></td><td><span class="math">x_1 \quad a_n</span></td></tr>
+    <tr><td>Pi and e</td><td><code>pi</code>, <code>e</code></td><td><span class="math">\pi \quad e</span></td></tr>
+    <tr><td>Comparisons</td><td><code>&lt;=</code>, <code>&gt;=</code>, <code>!=</code></td><td><span class="math">\le \quad \ge \quad \ne</span></td></tr>
+    <tr><td>Absolute value</td><td><code>|x|</code></td><td><span class="math">|x|</span></td></tr>
+  </tbody>
+</table>
+
+<h3>Harder stuff</h3>
+<table class="guide">
+  <thead><tr><th>To write…</th><th>Type this</th><th>It looks like</th></tr></thead>
+  <tbody>
+    <tr><td>Functions</td><td><code>sin(x)</code>, <code>log(x)</code>, <code>ln(x)</code></td><td><span class="math">\sin(x) \quad \log(x) \quad \ln(x)</span></td></tr>
+    <tr><td>A fraction inside a fraction</td><td><code>(1/2) / (3/4)</code></td><td><span class="math">\frac{1/2}{3/4}</span></td></tr>
+    <tr><td>Derivative</td><td><code>d/dx (x^2)</code>, or “the derivative of x^2”</td><td><span class="math">\frac{d}{dx}x^2</span></td></tr>
+    <tr><td>Integral</td><td>“the integral of x^2 from 0 to 1”</td><td><span class="math">\int_0^1 x^2\,dx</span></td></tr>
+    <tr><td>Sum</td><td>“the sum of n from 1 to 10”</td><td><span class="math">\sum_{n=1}^{10} n</span></td></tr>
+  </tbody>
+</table>
+
+<p class="muted">Not sure how to type something? Just describe it in words — that almost
+always works, and the tutor will show it back to you in proper math so you can confirm.</p>
+{% endblock %}

@@ -1,0 +1,6 @@
+{# Renders one stored message row `m` (sqlite3.Row). Content is autoescaped. #}
+<div class="bubble {{ 'student' if m.role == 'student' else 'tutor' }}">
+  <div class="who">{{ 'You' if m.role == 'student' else 'Tutor' }}</div>
+  {% if m.role == 'tutor' %}<div class="text md">{{ m.content | tutor_md }}</div>
+  {% else %}<div class="text">{{ m.content }}</div>{% endif %}
+</div>

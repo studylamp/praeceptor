@@ -1,0 +1,27 @@
+[project]
+name = "praeceptor"
+version = "0.1.0"
+description = "Self-hosted homeschool tutoring harness: subject-scoped AI tutors with a gate, parent oversight, and per-student caps."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.2",
+    "python-dotenv>=1.0",
+    "litellm>=1.50",
+    "argon2-cffi>=23.1",
+    "markdown-it-py>=3.0",
+    "mdit-py-plugins>=0.4",
+    "nh3>=0.2",
+    "sympy>=1.14.0",
+    "numpy>=2.2.6",
+    "matplotlib>=3.10.9",
+]
+
+[tool.uv]
+# This is an application, not a distributable library — don't try to build/install it.
+package = false

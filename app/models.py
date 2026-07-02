@@ -1,0 +1,289 @@
+"""Query helpers (raw SQL over sqlite3). Thin, explicit, no ORM.
+
+All functions open their own short-lived connection via db(). Rows come back as
+sqlite3.Row (dict-like). Datetimes are stored/compared as UTC text via SQLite's
+datetime('now'); the `date` used for caps is YYYY-MM-DD.
+"""
+
+from typing import Optional
+
+from app.db import db
+
+# Column allowlists for the dynamic-update helpers below. Keys passed to
+# update_*/create_subject MUST be a subset of these — this blocks both SQL
+# identifier injection and mass-assignment of columns a caller shouldn't touch.
+_STUDENT_COLS = frozenset(
+    {"name", "birth_year", "birth_month", "pin_hash", "daily_message_cap", "daily_token_cap"}
+)
+_SUBJECT_COLS = frozenset(
+    {"name", "grade_level", "curriculum_name", "style", "answer_policy",
+     "gate_scope", "curriculum_context", "tutor_model", "tools_enabled",
+     "framing_supplement", "active"}
+)
+
+
+def _check_cols(fields, allowed) -> None:
+    bad = set(fields) - allowed
+    if bad:
+        raise ValueError(f"disallowed column(s): {sorted(bad)}")
+
+
+# ----------------------------- students -----------------------------
+
+def create_student(
+    name: str,
+    birth_year: Optional[int],
+    birth_month: Optional[int],
+    pin_hash: str,
+    daily_message_cap: Optional[int] = None,
+    daily_token_cap: Optional[int] = None,
+) -> int:
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO students (name, birth_year, birth_month, pin_hash, "
+            "daily_message_cap, daily_token_cap) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, birth_year, birth_month, pin_hash, daily_message_cap, daily_token_cap),
+        )
+        return int(cur.lastrowid)
+
+
+def get_student(student_id: int):
+    with db() as conn:
+        return conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+
+
+def list_students():
+    with db() as conn:
+        return conn.execute("SELECT * FROM students ORDER BY name").fetchall()
+
+
+def update_student(student_id: int, **fields) -> None:
+    if not fields:
+        return
+    _check_cols(fields, _STUDENT_COLS)
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with db() as conn:
+        conn.execute(f"UPDATE students SET {cols} WHERE id = ?", (*fields.values(), student_id))
+
+
+def delete_student(student_id: int) -> None:
+    """Remove a student and (via ON DELETE CASCADE) their subjects, conversations,
+    messages, and usage. Destructive — the admin UI confirms first."""
+    with db() as conn:
+        conn.execute("DELETE FROM students WHERE id = ?", (student_id,))
+
+
+# ----------------------------- subjects -----------------------------
+
+def create_subject(student_id: int, name: str, **fields) -> int:
+    _check_cols(fields, _SUBJECT_COLS)
+    cols = ["student_id", "name", *fields.keys()]
+    placeholders = ", ".join("?" for _ in cols)
+    with db() as conn:
+        cur = conn.execute(
+            f"INSERT INTO subjects ({', '.join(cols)}) VALUES ({placeholders})",
+            (student_id, name, *fields.values()),
+        )
+        return int(cur.lastrowid)
+
+
+def get_subject(subject_id: int):
+    with db() as conn:
+        return conn.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+
+
+def list_subjects(student_id: int, active_only: bool = True):
+    sql = "SELECT * FROM subjects WHERE student_id = ?"
+    if active_only:
+        sql += " AND active = 1"
+    sql += " ORDER BY name"
+    with db() as conn:
+        return conn.execute(sql, (student_id,)).fetchall()
+
+
+def update_subject(subject_id: int, **fields) -> None:
+    if not fields:
+        return
+    _check_cols(fields, _SUBJECT_COLS)
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with db() as conn:
+        conn.execute(f"UPDATE subjects SET {cols} WHERE id = ?", (*fields.values(), subject_id))
+
+
+def delete_subject(subject_id: int) -> None:
+    """Remove a subject and (via cascade) its conversation + messages. Destructive —
+    prefer deactivating (active=0), which preserves the logs; the admin UI confirms."""
+    with db() as conn:
+        conn.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
+
+
+# --------------------------- conversations --------------------------
+
+def list_conversations(student_id: Optional[int] = None):
+    """Every REAL conversation with its student/subject names and roll-up counts, newest
+    activity first (empty conversations last). Powers the admin log viewer. Admin chat-test
+    threads (is_test=1) are excluded — they have their own review path (list_test_conversations)
+    and share student/subject names with the real threads, which is confusing here."""
+    sql = """
+        SELECT c.id, c.student_id, c.subject_id, c.started_at,
+               st.name AS student_name, su.name AS subject_name, su.active AS subject_active,
+               COUNT(m.id) AS message_count,
+               SUM(CASE WHEN m.blocked = 1 THEN 1 ELSE 0 END) AS blocked_count,
+               MAX(m.created_at) AS last_at
+        FROM conversations c
+        JOIN students st ON st.id = c.student_id
+        JOIN subjects su ON su.id = c.subject_id
+        LEFT JOIN messages m ON m.conversation_id = c.id
+        WHERE c.is_test = 0
+    """
+    params: tuple = ()
+    if student_id is not None:
+        sql += " AND c.student_id = ?"
+        params = (student_id,)
+    sql += " GROUP BY c.id ORDER BY last_at DESC"  # SQLite sorts NULL last under DESC
+    with db() as conn:
+        return conn.execute(sql, params).fetchall()
+
+
+def get_conversation(conversation_id: int):
+    """A single conversation with its student/subject names, for the transcript view."""
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT c.id, c.student_id, c.subject_id, c.started_at,
+                   st.name AS student_name, st.birth_year, st.birth_month,
+                   su.name AS subject_name, su.active AS subject_active
+            FROM conversations c
+            JOIN students st ON st.id = c.student_id
+            JOIN subjects su ON su.id = c.subject_id
+            WHERE c.id = ?
+            """,
+            (conversation_id,),
+        ).fetchone()
+
+
+def get_or_create_conversation(student_id: int, subject_id: int, is_test: bool = False) -> int:
+    """One continuing thread per (student, subject) for cross-day continuity. The admin
+    chat test passes is_test=True to get a SEPARATE thread that never mixes with the
+    student's real history (and can be wiped on its own — see clear_test_conversations)."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id FROM conversations WHERE student_id = ? AND subject_id = ? AND is_test = ?",
+            (student_id, subject_id, int(is_test)),
+        ).fetchone()
+        if row:
+            return int(row["id"])
+        cur = conn.execute(
+            "INSERT INTO conversations (student_id, subject_id, is_test) VALUES (?, ?, ?)",
+            (student_id, subject_id, int(is_test)),
+        )
+        return int(cur.lastrowid)
+
+
+def list_test_conversations():
+    """Admin chat-test threads (is_test=1) with student/subject names, oldest first.
+    For oversight/debugging; real student conversations are excluded."""
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT c.id, c.student_id, c.subject_id, c.started_at,
+                   st.name AS student_name, su.name AS subject_name
+            FROM conversations c
+            JOIN students st ON st.id = c.student_id
+            JOIN subjects su ON su.id = c.subject_id
+            WHERE c.is_test = 1
+            ORDER BY c.id
+            """
+        ).fetchall()
+
+
+def clear_subject_conversation(subject_id: int) -> None:
+    """Drop the student's REAL conversation thread for one subject (messages cascade),
+    giving a clean slate — e.g. when the student starts a new chapter. The subject and its
+    settings are kept; the next message reopens a fresh thread via get_or_create_conversation.
+    The admin chat-test thread (is_test=1) is untouched — it has its own clear path."""
+    with db() as conn:
+        conn.execute(
+            "DELETE FROM conversations WHERE subject_id = ? AND is_test = 0",
+            (subject_id,),
+        )
+
+
+def clear_test_conversations() -> None:
+    """Wipe ALL admin chat-test threads (and their messages, via cascade). Backs the
+    chat test's "New conversation" button; never touches real student conversations."""
+    with db() as conn:
+        conn.execute("DELETE FROM conversations WHERE is_test = 1")
+
+
+# ----------------------------- messages -----------------------------
+
+def add_message(
+    conversation_id: int,
+    role: str,
+    content: str,
+    blocked: bool = False,
+    gate_verdict: Optional[str] = None,
+    gate_reason: Optional[str] = None,
+    token_count: Optional[int] = None,
+) -> int:
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO messages (conversation_id, role, content, blocked, gate_verdict, "
+            "gate_reason, token_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (conversation_id, role, content, int(blocked), gate_verdict, gate_reason, token_count),
+        )
+        return int(cur.lastrowid)
+
+
+def get_messages(conversation_id: int, include_blocked: bool = True):
+    sql = "SELECT * FROM messages WHERE conversation_id = ?"
+    if not include_blocked:
+        sql += " AND blocked = 0"
+    sql += " ORDER BY id"
+    with db() as conn:
+        return conn.execute(sql, (conversation_id,)).fetchall()
+
+
+# ------------------------------- usage ------------------------------
+
+def get_usage(student_id: int, date: str):
+    with db() as conn:
+        return conn.execute(
+            "SELECT message_count, token_count FROM usage WHERE student_id = ? AND date = ?",
+            (student_id, date),
+        ).fetchone()
+
+
+def increment_usage(student_id: int, date: str, messages: int = 0, tokens: int = 0) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO usage (student_id, date, message_count, token_count) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(student_id, date) DO UPDATE SET "
+            "message_count = message_count + excluded.message_count, "
+            "token_count = token_count + excluded.token_count",
+            (student_id, date, messages, tokens),
+        )
+
+
+# ----------------------------- settings -----------------------------
+# Simple key/value store for app-wide admin settings (e.g. the global educational
+# framing). Values are plain text; callers are responsible for their meaning.
+
+# Key for the parent's optional global educational/worldview framing (tutor-only).
+FRAMING_SETTING_KEY = "educational_framing"
+
+
+def get_setting(key: str) -> Optional[str]:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+
+def set_setting(key: str, value: Optional[str]) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )

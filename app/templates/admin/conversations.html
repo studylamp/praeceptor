@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Conversations — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>All conversations</h1>
+<p class="muted">Every thread, including blocked off-topic attempts. Click to read the full transcript.</p>
+{% include "admin/_conv_table.html" %}
+{% endblock %}

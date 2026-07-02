@@ -1,0 +1,125 @@
+services:
+  praeceptor:
+    build:
+      context: .
+      # Build provenance baked into the image (admin footer + /healthz). Pass it at build
+      # time, e.g.:  APP_VERSION=$(git describe --tags --always --dirty) docker compose up -d --build
+      # Defaults to "dev" when unset. See the README update command.
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: praeceptor:latest
+    container_name: praeceptor
+    restart: unless-stopped
+    env_file: .env
+    # Drop all Linux capabilities and forbid privilege escalation — the app binds its port
+    # and writes its volumes as non-root appuser and needs no caps. (This is hardening, not
+    # the seccomp/apparmor *relaxation* the in-app bwrap approach would have required.)
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Proxy tool execution to the separate, network-isolated `sandbox` worker over the
+      # shared socket. This is what lets the app keep its default seccomp/apparmor guardrails
+      # (no privilege relaxation, no host userns changes) — the sandbox CONTAINER is the boundary.
+      - SANDBOX_SERVER=/ipc/sandbox.sock
+
+    # --- Mode 1: direct on the LAN by IP (the default) ---
+    # Bind to the LAN address only (from .env). NEVER 0.0.0.0, NEVER port-forward.
+    # The :? guard makes compose ABORT if BIND_ADDR is unset/empty, rather than
+    # silently binding 0.0.0.0 (all interfaces) — that would defeat LAN-only.
+    # HOST_PORT (default 8000) is the port published on the host; change it in .env if
+    # 8000 is already taken by another container. The app always listens on 8000 inside.
+    ports:
+      - "${BIND_ADDR:?BIND_ADDR must be set to your server's LAN IP in .env}:${HOST_PORT:-8000}:8000"
+
+    # --- Modes 2/3: behind Nginx Proxy Manager for TLS (and, if you opt in, a WAN
+    # port-forward) --- comment out the `ports:` block above, set SESSION_HTTPS_ONLY=true
+    # in .env, join NPM's shared external network below, and point an NPM proxy host at
+    # `praeceptor:8000`. Bump NPM's proxy_read_timeout to ~300s so a slow first token on a
+    # long turn survives (SSE already sends X-Accel-Buffering: no).
+    # networks:
+    #   - npm
+    #   - default
+
+    volumes:
+      # SQLite DB on a NAMED volume: Docker initializes it with the image's non-root
+      # (uid 10001) ownership, so there is NO host-side chown. Persists across rebuilds.
+      # Back it up e.g.:
+      #   docker run --rm -v praeceptor_data:/d -v "$PWD":/b alpine tar czf /b/praeceptor-db.tgz -C /d .
+      - data:/app/data
+      # Shared, app↔sandbox-only volume carrying the worker's Unix-domain socket.
+      - sandbox_ipc:/ipc
+
+    depends_on:
+      sandbox:
+        condition: service_healthy
+
+    healthcheck:
+      # Uses the image's own Python (no curl needed). Non-2xx/❌ → unhealthy.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Compute-tool sandbox: runs the SAME image as a worker that executes untrusted,
+  # model-generated Python and returns results over the shared socket. Its isolation is
+  # the container itself — no network at all, no secrets, no DB — so it needs no bubblewrap,
+  # no user namespaces, and no seccomp/apparmor relaxation.
+  sandbox:
+    image: praeceptor:latest
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    container_name: praeceptor-sandbox
+    restart: unless-stopped
+    command: ["python", "-m", "app.sandbox.server"]
+    # NO network — Docker gives this container zero network interfaces, so tool code
+    # (even if it escaped the runner subprocess) has no route to the LAN or internet.
+    network_mode: "none"
+    # Hardening for the container that runs UNTRUSTED tool code. The isolation boundary is
+    # the container itself (no network, no secrets, no DB); these strip privileges the worker
+    # never needs and add AGGREGATE resource ceilings that per-process rlimits can't (rlimits
+    # like NPROC are per-uid, so a fork bomb would otherwise starve the worker too).
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128            # container-wide process ceiling (fork-bomb guard)
+    mem_limit: 4g              # aggregate RAM ceiling — keep >= SANDBOX_MAX_CONCURRENT * SANDBOX_MEM_MB; tune to your host
+    cpus: "2.0"                # aggregate CPU ceiling; tune to your host
+    read_only: true            # rootfs read-only — only the tmpfs below + the /ipc volume are writable.
+                               # If the worker fails its healthcheck after this, drop read_only (a lib
+                               # may want another writable path) and re-test; the other caps still apply.
+    tmpfs:
+      - /tmp:size=256m         # per-call work dirs (matplotlib cache, cwd, HOME) live here — size-capped
+    # NO env_file and NO ./data mount: the worker holds no API keys/admin password and
+    # cannot read the SQLite DB — they simply aren't present in this container.
+    environment:
+      - SANDBOX_SERVER=/ipc/sandbox.sock
+      - SANDBOX_MAX_CONCURRENT=4
+    volumes:
+      - sandbox_ipc:/ipc
+    healthcheck:
+      # Healthy once the worker is accepting connections on the socket.
+      test: ["CMD", "python", "-c", "import socket,os; socket.socket(socket.AF_UNIX).connect(os.environ.get('SANDBOX_SERVER','/ipc/sandbox.sock'))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  # The SQLite DB. Named (not a host bind mount) so it inherits the image's appuser (uid
+  # 10001) ownership — no manual chown. Actual name: <project>_data (usually praeceptor_data;
+  # run `docker volume ls` to confirm). Keep it named: a bind mount would not inherit the
+  # ownership and the non-root app couldn't write it without a host chown.
+  data:
+  # Internal volume shared ONLY between praeceptor and its sandbox worker (the UDS lives
+  # here). Named for the same reason — the worker (uid 10001) must be able to bind the socket.
+  sandbox_ipc:
+
+# Uncomment for Modes 2/3 (shared network with Nginx Proxy Manager). The network must
+# already exist (created by your NPM stack):  docker network create npm
+# networks:
+#   npm:
+#     external: true

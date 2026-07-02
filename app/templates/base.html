@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Praeceptor{% endblock %}</title>
+  <link rel="stylesheet" href="/static/katex/katex.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  {# Synchronous (not deferred): set the color theme before first paint to avoid a flash. #}
+  <script src="/static/theme.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/katex/katex.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Color theme">◐ Auto</button>
+  <main>{% block content %}{% endblock %}</main>
+  {# Admin-only footer: the build/version string (always shown, useful for support) plus
+     the source link when PROJECT_URL is set (no broken link before the repo is public).
+     Both values are autoescaped; rel=noopener on the outbound tab. #}
+  {% if request.url.path.startswith('/admin') and (app_version or project_url) %}
+  <footer class="admin-footer">Praeceptor{% if app_version %} {{ app_version }}{% endif %}{% if project_url %} · <a href="{{ project_url }}" target="_blank" rel="noopener">Source on GitHub</a>{% endif %}</footer>
+  {% endif %}
+</body>
+</html>

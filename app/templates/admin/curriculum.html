@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Curriculum — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Curriculum context</h1>
+<p class="muted">Quick-update what each student is working on. The tutor uses this as
+  context on every message, so update it as often as you like (weekly or daily).</p>
+{% for g in groups %}
+<section class="panel">
+  <h2>{{ g.student.name }}</h2>
+  <table class="grid">
+    <thead><tr><th>Subject</th><th>Current context</th><th></th></tr></thead>
+    <tbody>
+    {% for s in g.subjects %}
+    <tr class="{{ '' if s.active else 'inactive' }}">
+      <td>{{ s.name }}{% if not s.active %} <span class="badge">inactive</span>{% endif %}</td>
+      <td class="ctx-cell">
+        {% if s.curriculum_context %}{{ s.curriculum_context | truncate(160) }}
+        {% else %}<span class="muted">— none set —</span>{% endif %}
+      </td>
+      <td><a class="btn" href="/admin/subjects/{{ s.id }}/context">Update →</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<p>No subjects yet. <a href="/admin">Add a student and subjects</a> first.</p>
+{% endfor %}
+{% endblock %}

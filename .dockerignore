@@ -1,0 +1,37 @@
+# Keep the build context lean and secrets out of the image.
+# NOTE: pyproject.toml, uv.lock, .python-version, app/, and static/ are COPYed by the
+# Dockerfile, so they must NOT be excluded here.
+
+# Secrets & local data — never bake these into an image layer.
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Virtualenv (the image builds its own at /app/.venv).
+.venv/
+venv/
+
+# VCS & tooling
+.git/
+.gitignore
+.dockerignore
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local-only working notes — not needed in the image
+PLAN.md

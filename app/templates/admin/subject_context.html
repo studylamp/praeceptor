@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Curriculum context — {{ subject.name }}{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin/curriculum">← All curriculum</a> ·
+   <a href="/admin/students/{{ student.id }}">{{ student.name }}</a></p>
+<h1>Curriculum context <small class="muted">· {{ subject.name }} ({{ student.name }})</small></h1>
+{% if saved %}<p class="banner ok">Saved — takes effect on the student's next message.</p>{% endif %}
+<p class="muted">What the student is working on right now: paste this week's lesson notes,
+  topics, page numbers, or assignments. The tutor uses this as context on every message,
+  so update it as often as you like — no need to open the full subject editor.</p>
+<form method="post" action="/admin/subjects/{{ subject.id }}/context" class="form">
+  <label>Curriculum context
+    <textarea name="curriculum_context" rows="18" autofocus>{{ subject.curriculum_context or "" }}</textarea>
+  </label>
+  <div class="actions">
+    <button type="submit">Save context</button>
+    <a href="/admin/curriculum">Done</a>
+    <a href="/admin/subjects/{{ subject.id }}/edit">Open full editor</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Admin — Praeceptor{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Students</h1>
+{% if tools_enabled and sandbox_ok is false %}
+<div class="banner error">
+  <strong>Compute tools aren’t working.</strong> The math/plot sandbox failed its startup
+  self-test, so the tutor can’t run calculations or draw plots (it still answers, just
+  without tools). Fix it on the server, then re-check — no restart needed.
+  <form method="post" action="/admin/sandbox/recheck" class="inline-form">
+    <button class="btn" type="submit">Re-check now</button>
+  </form>
+  <details><summary>Details &amp; fix</summary><pre class="preflight-msg">{{ sandbox_msg }}</pre></details>
+</div>
+{% endif %}
+{% if any_default_pin %}
+<p class="banner warn">Some students still use the default PIN (1234). Set a real PIN for each (open the student, then “Reset PIN”) before real use.</p>
+{% endif %}
+<p><a class="btn" href="/admin/students/new">+ Add student</a></p>
+<table class="grid">
+  <thead><tr>
+    <th>Name</th><th>Age</th><th>Subjects</th><th>Today (msgs / tokens)</th><th>Daily caps</th><th>PIN</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/admin/students/{{ r.student.id }}">{{ r.student.name }}</a></td>
+      <td>{% set a = r.student | age_of %}{{ a if a is not none else "—" }}</td>
+      <td>{{ r.active_subjects }} active{% if r.subject_count != r.active_subjects %} / {{ r.subject_count }} total{% endif %}</td>
+      <td>{{ r.usage.message_count if r.usage else 0 }} / {{ r.usage.token_count if r.usage else 0 }}</td>
+      <td>
+        {{ r.student.daily_message_cap if r.student.daily_message_cap is not none else "∞" }} msgs,
+        {{ r.student.daily_token_cap if r.student.daily_token_cap is not none else "∞" }} tok
+      </td>
+      <td>{% if r.default_pin %}<span class="badge warn">default</span>{% else %}<span class="badge ok">set</span>{% endif %}</td>
+      <td><a href="/admin/students/{{ r.student.id }}">Manage →</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">No students yet. <a href="/admin/students/new">Add one</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Today’s usage counts are for {{ today }} (server-local date; caps reset at local midnight).</p>
+{% endblock %}

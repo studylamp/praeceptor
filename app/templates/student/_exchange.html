@@ -1,0 +1,8 @@
+{# No-JS / non-streaming partial: the student's message + the response. The
+   streaming path adds the student bubble client-side and streams the response,
+   but both render the response through student/_response.html. All values autoescaped. #}
+<div class="bubble student">
+  <div class="who">You</div>
+  <div class="text">{{ message }}</div>
+</div>
+{% include "student/_response.html" %}

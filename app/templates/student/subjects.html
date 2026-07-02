@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Subjects — Praeceptor{% endblock %}
+{% block content %}
+<header class="topbar">
+  <span>Hi, {{ student.name }}</span>
+  <nav class="bar-actions">
+    <a href="/help">Help</a>
+    <a href="/logout">Log out</a>
+  </nav>
+</header>
+<h1>Pick a subject</h1>
+<div class="cards">
+  {% for sub in subjects %}
+  <a class="card" href="/chat/{{ sub.id }}">
+    <strong>{{ sub.name }}</strong>
+    {% if sub.grade_level %}<small>{{ sub.grade_level }}</small>{% endif %}
+  </a>
+  {% else %}
+  <p>No subjects yet. Ask your parent to set one up.</p>
+  {% endfor %}
+</div>
+{% endblock %}

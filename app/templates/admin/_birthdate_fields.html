@@ -1,0 +1,21 @@
+{# Birth month + year inputs with the derived age shown alongside (updated live by
+   setupBirthdateAge() in app.js, and server-rendered here so it's right on load).
+   Expects: bd_month (int|str|''), bd_year (int|str|''), bd_age (int|None). #}
+{% set MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] %}
+{% set _m = bd_month | int(0) %}
+<fieldset class="birthdate" data-birthdate>
+  <legend>Date of birth <small>(used to keep tutoring age-appropriate; the age is calculated for you)</small></legend>
+  <label>Month
+    <select name="birth_month" data-birth-month>
+      <option value="">—</option>
+      {% for i in range(12) %}
+      <option value="{{ i + 1 }}"{{ ' selected' if _m == i + 1 else '' }}>{{ MONTHS[i] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Year
+    <input name="birth_year" type="number" inputmode="numeric" min="1900" max="{{ current_year() }}"
+      value="{{ bd_year if bd_year not in (none, '') else '' }}" data-birth-year>
+  </label>
+  <span class="age-display muted" data-age-display>{% if bd_age is not none %}Age {{ bd_age }}{% endif %}</span>
+</fieldset>

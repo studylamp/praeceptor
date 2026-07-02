@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}New student — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin">← Students</a></p>
+<h1>Add student</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/admin/students" class="form">
+  <label>Name <input name="name" value="{{ vals.get('name','') }}" required></label>
+  {% set bd_month = vals.get('birth_month','') %}
+  {% set bd_year = vals.get('birth_year','') %}
+  {% set bd_age = none %}
+  {% include "admin/_birthdate_fields.html" %}
+  <label>PIN (4–12 digits) <input type="password" name="pin" inputmode="numeric" autocomplete="off" required></label>
+  <label>Daily message cap <small>(blank = no cap)</small>
+    <input name="daily_message_cap" type="number" min="0" value="{{ vals.get('daily_message_cap','') }}"></label>
+  <label>Daily token cap <small>(blank = no cap)</small>
+    <input name="daily_token_cap" type="number" min="0" value="{{ vals.get('daily_token_cap','') }}"></label>
+  <div class="actions"><button type="submit">Create student</button> <a href="/admin">Cancel</a></div>
+</form>
+{% endblock %}

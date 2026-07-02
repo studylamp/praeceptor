@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Settings — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Settings</h1>
+{% if saved %}<p class="banner ok">Saved — takes effect on the student's next message.</p>{% endif %}
+
+<h2>Educational framing <small class="muted">(optional)</small></h2>
+<p class="muted">Describe your family's educational or worldview framing and the tutor will
+  honor it across every subject when presenting material on contested or worldview-sensitive
+  topics. It shapes only how the tutor PRESENTS material; it does not change a subject's
+  scope, age-appropriateness, or safety, and it never affects which messages are allowed.
+  Spell out exactly what you want — for example, if you'd also like the tutor to cover how a
+  topic is commonly taught elsewhere, say so here. Leave it blank for no framing. You can add
+  a subject-specific note in each subject's editor.</p>
+<form method="post" action="/admin/settings" class="form">
+  <label>Global educational framing
+    <textarea name="educational_framing" rows="10" autofocus
+      placeholder="e.g. Emphasize a classical, Western-canon approach and primary sources.">{{ framing }}</textarea>
+  </label>
+  <div class="actions">
+    <button type="submit">Save settings</button>
+    <a href="/admin">Done</a>
+  </div>
+</form>
+{% endblock %}
