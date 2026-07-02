@@ -12,10 +12,6 @@ doing the math in its head.
 
 Runs on your own hardware, on your LAN, in Docker. Your keys, your data, your rules.
 
-> **Status: pre-release.** The app is feature-complete and containerized (non-root image,
-> sandboxed compute tools, LAN-bound compose); a public release is being prepared. See
-> [`CLAUDE.md`](CLAUDE.md) for the architecture, module map, and conventions.
-
 <!-- Screenshot placeholder: student chat view (subject picker + a math conversation with a rendered plot) -->
 <!-- ![Student chat](docs/img/student-chat.png) -->
 
