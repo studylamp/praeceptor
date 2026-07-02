@@ -1,6 +1,6 @@
 [project]
 name = "praeceptor"
-version = "0.1.0"
+version = "0.1.1"
 description = "Self-hosted homeschool tutoring harness: subject-scoped AI tutors with a gate, parent oversight, and per-student caps."
 readme = "README.md"
 requires-python = ">=3.12"

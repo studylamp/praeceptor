@@ -37,10 +37,10 @@ class Settings:
     # mark it Secure (off for LAN HTTP; flip on if you front it with TLS/VPN).
     session_max_age: int = int(os.getenv("SESSION_MAX_AGE", "28800"))
     session_https_only: bool = os.getenv("SESSION_HTTPS_ONLY", "false").lower() in ("1", "true", "yes")
-    # Optional public source-code URL. When set, the admin console shows a small
-    # "Source on GitHub" footer link; empty (the default) renders no link, so no broken
-    # link ships before the repo is public.
-    project_url: str = os.getenv("PROJECT_URL", "")
+    # Public source-code URL for the admin "Source on GitHub" footer link. Defaults to the
+    # canonical upstream repo; override via PROJECT_URL to point at your own fork, or set it
+    # empty (PROJECT_URL=) to hide the link.
+    project_url: str = os.getenv("PROJECT_URL", "https://github.com/studylamp/praeceptor")
     # Build provenance shown in the admin footer and /healthz. Baked into the image at
     # build time from `git describe --tags --always --dirty` (see docker-compose build.args
     # and the README update command); "dev" for a plain local run / `docker build` with no
