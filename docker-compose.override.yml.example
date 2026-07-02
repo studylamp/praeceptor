@@ -1,0 +1,28 @@
+# docker-compose.override.yml.example — copy to docker-compose.override.yml and edit.
+#
+#     cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Compose automatically merges docker-compose.override.yml on top of docker-compose.yml
+# every time you run `docker compose up`. The real file is gitignored, so your local
+# deployment wiring never shows up in `git status` or collides with `git pull`.
+#
+# ---------------------------------------------------------------------------------------
+# Mode 2/3 — behind a reverse proxy (e.g. Nginx Proxy Manager) on a shared Docker network
+# ---------------------------------------------------------------------------------------
+# This redefines the compose project's `default` network as your proxy's EXISTING external
+# network, so the `praeceptor` app container joins it and the proxy can reach it by name at
+# http://praeceptor:8000. The `sandbox` worker has `network_mode: none`, so it never joins
+# any network and stays fully isolated — this file cannot touch it.
+#
+# Also, in .env: set SESSION_HTTPS_ONLY=true when the proxy terminates TLS (marks the
+# session cookie Secure). To serve ONLY through the proxy with no direct LAN port, also
+# comment out the `ports:` block in docker-compose.yml — that single line is the one edit
+# Compose overrides can't express.
+
+networks:
+  # This network must ALREADY EXIST, or `docker compose up` aborts with
+  # "network docker-proxied declared as external, but could not be found". Your reverse-proxy
+  # stack usually creates it; otherwise make it once: docker network create docker-proxied
+  default:
+    external: true
+    name: docker-proxied      # <-- your reverse proxy's Docker network (see: docker network ls)

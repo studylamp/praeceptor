@@ -223,7 +223,14 @@ It's designed to be stood up two ways, both LAN-only:
 - **Directly on your LAN by IP** — publish the container port to your server's LAN
   address and browse to `http://<server-ip>:8000`. No reverse proxy required.
 - **Behind a reverse proxy** (e.g. [Nginx Proxy Manager](https://nginxproxymanager.com/))
-  for HTTPS / Let's Encrypt and a friendly hostname on your local network.
+  for HTTPS / Let's Encrypt and a friendly hostname on your local network. Copy
+  `docker-compose.override.yml.example` to `docker-compose.override.yml` (it's gitignored and
+  Compose merges it automatically) and set your proxy's Docker network name there — no need to
+  hand-edit `docker-compose.yml`. Point a proxy host at `http://praeceptor:8000`, set
+  `SESSION_HTTPS_ONLY=true` in `.env`, and raise the proxy's read timeout to ~300s so a slow
+  first token on a long turn survives. To serve *only* through the proxy, also comment out the
+  `ports:` block in `docker-compose.yml`. To get a publicly-trusted certificate without opening
+  an inbound port, use a **DNS-01** challenge.
 
 Your data persists on the named volume across image rebuilds, and everything —
 students, subjects, models, caps — is configured in the admin console, not in the image.

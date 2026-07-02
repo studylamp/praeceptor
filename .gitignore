@@ -29,3 +29,6 @@ PLAN.md
 
 # Local scratch / temp workspace — never committed
 .tmp/
+
+# Local deployment overrides (Compose auto-merges this) — never committed
+docker-compose.override.yml

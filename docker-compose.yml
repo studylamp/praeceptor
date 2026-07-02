@@ -32,14 +32,13 @@ services:
     ports:
       - "${BIND_ADDR:?BIND_ADDR must be set to your server's LAN IP in .env}:${HOST_PORT:-8000}:8000"
 
-    # --- Modes 2/3: behind Nginx Proxy Manager for TLS (and, if you opt in, a WAN
-    # port-forward) --- comment out the `ports:` block above, set SESSION_HTTPS_ONLY=true
-    # in .env, join NPM's shared external network below, and point an NPM proxy host at
-    # `praeceptor:8000`. Bump NPM's proxy_read_timeout to ~300s so a slow first token on a
-    # long turn survives (SSE already sends X-Accel-Buffering: no).
-    # networks:
-    #   - npm
-    #   - default
+    # --- Behind a reverse proxy (Modes 2/3)? Don't hand-edit this file. ---
+    # Copy docker-compose.override.yml.example -> docker-compose.override.yml (gitignored;
+    # Compose auto-merges it) to attach the app to your proxy's Docker network, then point a
+    # proxy host at http://praeceptor:8000. Set SESSION_HTTPS_ONLY=true in .env if the proxy
+    # terminates TLS, and raise the proxy's read timeout to ~300s so a slow first token on a
+    # long turn survives (SSE already sends X-Accel-Buffering: no). To serve ONLY through the
+    # proxy, also comment out the `ports:` block above. See the README.
 
     volumes:
       # SQLite DB on a NAMED volume: Docker initializes it with the image's non-root
@@ -118,8 +117,6 @@ volumes:
   # here). Named for the same reason — the worker (uid 10001) must be able to bind the socket.
   sandbox_ipc:
 
-# Uncomment for Modes 2/3 (shared network with Nginx Proxy Manager). The network must
-# already exist (created by your NPM stack):  docker network create npm
-# networks:
-#   npm:
-#     external: true
+# Behind a reverse proxy? The shared external network is configured in
+# docker-compose.override.yml (copy it from docker-compose.override.yml.example) — that keeps
+# your deployment-specific wiring out of this committed file. See the README.
