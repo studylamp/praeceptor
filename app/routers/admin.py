@@ -260,6 +260,17 @@ def student_reset_pin(request: Request, student_id: int, _: bool = Depends(auth.
     return RedirectResponse(f"/admin/students/{student_id}", status_code=303)
 
 
+@router.post("/students/{student_id}/reset-usage")
+def student_reset_usage(request: Request, student_id: int, _: bool = Depends(auth.current_admin)):
+    """Zero today's message/token counters so the daily caps start counting over —
+    for giving a capped student more time today. The cap values themselves are
+    unchanged (edit those in the details form)."""
+    if models.get_student(student_id) is None:
+        return RedirectResponse("/admin", status_code=303)
+    models.reset_usage(student_id, _today())
+    return RedirectResponse(f"/admin/students/{student_id}", status_code=303)
+
+
 @router.get("/students/{student_id}/delete", response_class=HTMLResponse)
 def student_delete_confirm(request: Request, student_id: int, _: bool = Depends(auth.current_admin)):
     student = models.get_student(student_id)

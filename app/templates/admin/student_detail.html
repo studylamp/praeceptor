@@ -25,6 +25,13 @@
   </form>
   <p class="muted">Today’s usage (local date): {{ usage.message_count if usage else 0 }} messages,
     {{ usage.token_count if usage else 0 }} tokens.</p>
+  {% if usage and (usage.message_count or usage.token_count) %}
+  <form method="post" action="/admin/students/{{ student.id }}/reset-usage" class="form inline">
+    <button type="submit">Reset today’s usage</button>
+    <small class="muted">Zeroes today’s counters so the daily caps start over — for giving
+      more time today. The cap values above are unchanged.</small>
+  </form>
+  {% endif %}
 </section>
 
 <section class="panel">

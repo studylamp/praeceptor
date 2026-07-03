@@ -266,6 +266,16 @@ def increment_usage(student_id: int, date: str, messages: int = 0, tokens: int =
         )
 
 
+def reset_usage(student_id: int, date: str) -> None:
+    """Wipe a student's usage counters for `date` (the admin "reset today's usage"
+    action): the daily message/token caps start counting from zero again. The audit
+    trail lives in conversations/messages, not here, so deleting the row loses
+    nothing."""
+    with db() as conn:
+        conn.execute("DELETE FROM usage WHERE student_id = ? AND date = ?",
+                     (student_id, date))
+
+
 # ----------------------------- settings -----------------------------
 # Simple key/value store for app-wide admin settings (e.g. the global educational
 # framing). Values are plain text; callers are responsible for their meaning.
