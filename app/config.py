@@ -33,6 +33,13 @@ class Settings:
     tutor_model_default: str = os.getenv(
         "TUTOR_MODEL_DEFAULT", "anthropic/claude-sonnet-5"
     )
+    # Prompt-cache TTL for the tutor's cached prefix (Anthropic): "1h" (default) or "5m".
+    # 1h costs 2x (vs 1.25x) to WRITE the cache but keeps it warm across the longer
+    # pauses of read-think-write subjects (e.g. creative writing), where a 5-minute
+    # entry routinely expires between turns and the whole history re-writes at the
+    # write premium. Set 5m only for consistently rapid-fire usage. See
+    # model_client._CACHE_CONTROL.
+    prompt_cache_ttl: str = (os.getenv("PROMPT_CACHE_TTL") or "1h").strip().lower()
     # Session cookie lifetime (seconds; default 8h ≈ one school day) and whether to
     # mark it Secure (off for LAN HTTP; flip on if you front it with TLS/VPN).
     session_max_age: int = int(os.getenv("SESSION_MAX_AGE", "28800"))
@@ -126,6 +133,14 @@ def validate_runtime(s: Settings = settings) -> None:
                 "compose `sandbox` service (or set SANDBOX_WRAPPER) before untrusted or "
                 "public exposure. See app/sandbox.", file=_sys.stderr,
             )
+    # Unknown PROMPT_CACHE_TTL is a soft misconfig: model_client treats anything but an
+    # explicit "5m" as the 1h default, so warn (like the sandbox notice) rather than refuse.
+    if s.prompt_cache_ttl not in ("5m", "1h"):
+        import sys as _sys
+        print(
+            f"WARNING [praeceptor]: unknown PROMPT_CACHE_TTL {s.prompt_cache_ttl!r} "
+            "(expected 5m or 1h) — using 1h.", file=_sys.stderr,
+        )
     if problems:
         raise RuntimeError(
             "Praeceptor refuses to start — fix these in your .env:\n  - " + "\n  - ".join(problems)

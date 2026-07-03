@@ -28,12 +28,45 @@ SYSTEM_FAIL_MSG = (
     "moment and try again. If it keeps happening, ask your parent to check on the tutor."
 )
 
-# Cap how many prior turns the tutor sees, to bound token cost and limit multi-turn
-# drift. ~20 exchanges of continuity; older turns are dropped from context (still
-# logged). Deeper history is cheap now that the prefix is prompt-cached (see
-# model_client._cached_messages) — after turn 1 it's mostly cache reads. Keep in sync
-# with `slice(-40)` in static/app.js recordHistory (the admin chat-test bound).
-MAX_HISTORY_TURNS = 40
+# Cap how much prior dialogue the tutor sees — for token cost and multi-turn drift —
+# but trim in STEPS, never a per-turn sliding window. Prompt caching is a byte-prefix
+# match (see model_client._cached_messages): a window that slides each exchange changes
+# the OLDEST retained turn on every request, which invalidates the cached history and
+# re-writes all of it at the cache-WRITE premium every turn — worse than no caching.
+# Instead the window grows to MAX + STEP - 1 turns, then chops back to MAX in one
+# deterministic cut, so between chops the prefix is byte-stable and served as cache
+# reads (~0.1x input price). A second, token-estimated ceiling bounds paste-heavy
+# sessions (a student pasting novella chapters) that a turn count alone wouldn't.
+# Older turns drop from the model's context only — they're still logged. The admin
+# chat test shares this exact path (its history is rebuilt server-side from the
+# persisted is_test thread — see routers/admin.py), so there is no client-side bound
+# to keep in sync.
+MAX_HISTORY_TURNS = 40      # turns kept after a chop (~20 exchanges of continuity)
+HISTORY_TRIM_STEP = 20      # chop granularity (turns); also the token-ceiling block size
+MAX_HISTORY_TOKENS = 50_000  # estimated (~chars/4) ceiling on retained history
+MIN_HISTORY_TURNS = 8       # keep at least this much continuity, even over the ceiling
+
+
+def _est_history_tokens(turns: list[dict]) -> int:
+    """~4 chars/token estimate over turn contents (same heuristic as elsewhere)."""
+    return sum(len(t["content"]) for t in turns) // 4
+
+
+def _trim_history(turns: list[dict]) -> list[dict]:
+    """Drop the oldest turns in whole HISTORY_TRIM_STEP blocks (never one-by-one), so
+    consecutive requests keep a byte-identical history prefix between chops. Pure and
+    deterministic in the input rows: the same conversation state always trims the same
+    way. The token ceiling only ever drops a block when at least MIN_HISTORY_TURNS
+    would remain — one giant pasted turn can still exceed the ceiling; the daily token
+    cap remains the hard spend bound."""
+    n = len(turns)
+    drop = 0
+    if n > MAX_HISTORY_TURNS:
+        drop = ((n - MAX_HISTORY_TURNS) // HISTORY_TRIM_STEP) * HISTORY_TRIM_STEP
+    while (n - drop - HISTORY_TRIM_STEP >= MIN_HISTORY_TURNS
+           and _est_history_tokens(turns[drop:]) > MAX_HISTORY_TOKENS):
+        drop += HISTORY_TRIM_STEP
+    return turns[drop:]
 
 
 def _today() -> str:
@@ -69,15 +102,15 @@ def _history_for_tutor(conversation_id: int) -> list[dict]:
     """The actual tutor dialogue as chat turns: tutor replies, plus student turns
     that were on-subject. Off-topic (blocked), other-subject, and gate-error student
     turns are excluded so the tutor's context isn't polluted by messages it never
-    answered. Truncated to the last MAX_HISTORY_TURNS turns (~20 exchanges; and trimmed
-    so it never starts on an assistant turn, which the chat API rejects)."""
+    answered. Bounded by the stepped trim above (cache-friendly turn + token ceilings;
+    and trimmed so it never starts on an assistant turn, which the chat API rejects)."""
     turns: list[dict] = []
     for r in models.get_messages(conversation_id, include_blocked=False):
         if r["role"] == "tutor":
             turns.append({"role": "assistant", "content": r["content"]})
         elif r["role"] == "student" and r["gate_verdict"] in (None, "on_subject"):
             turns.append({"role": "user", "content": r["content"]})
-    turns = turns[-MAX_HISTORY_TURNS:]
+    turns = _trim_history(turns)
     while turns and turns[0]["role"] == "assistant":
         turns.pop(0)
     return turns

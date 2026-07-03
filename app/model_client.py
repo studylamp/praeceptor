@@ -33,11 +33,25 @@ TUTOR_MAX_TOKENS = 16000
 # served from cache at ~0.1x input price instead of full price. Block-level
 # cache_control (not LiteLLM's top-level auto-cache) keeps this provider-flexible —
 # it also works on Bedrock/Vertex.
-_CACHE_CONTROL = {"type": "ephemeral"}  # 5-min TTL: a kid's turns are seconds/minutes apart
-# Cached-read tokens bill at ~0.1x, so we weight them at that fraction in the daily-cap
-# accounting — the token cap tracks real cost, not raw re-sent volume (deeper history is
-# mostly cache reads). The message cap still bounds turn volume.
+# TTL: 1h by default — it keeps the prefix warm across the read-think-write pauses of
+# subjects like creative writing (a 5m entry routinely expires between turns, and every
+# expiry re-writes the whole prefix at the write premium; the 2x-vs-1.25x write premium
+# pays for itself after the first pause it survives). PROMPT_CACHE_TTL=5m opts into
+# the cheaper writes for consistently rapid-fire usage (quick math Q&A).
+# Anything but an explicit "5m" gets the 1h default; validate_runtime warns at boot
+# on an unrecognized value (soft misconfig — same pattern as the sandbox notice).
+# Note: on Bedrock, LiteLLM maps cache_control to cachePoint blocks that carry no TTL,
+# so "1h" silently degrades to that provider's default there (caching still works).
+# Shared by reference into every request's content blocks — treat as immutable.
+_CACHE_CONTROL: dict = {"type": "ephemeral", "ttl": "1h"}
+if settings.prompt_cache_ttl == "5m":
+    _CACHE_CONTROL = {"type": "ephemeral"}
+# Daily-cap accounting weights cache traffic at its real price so the token cap tracks
+# cost, not raw re-sent volume: cached READS bill at ~0.1x base input, and cache WRITES
+# bill at a premium (1.25x for the 5m TTL, 2x for 1h) — both are folded into _charge.
+# The message cap still bounds turn volume.
 CACHE_READ_WEIGHT = 0.1
+CACHE_WRITE_WEIGHT = 1.25 if settings.prompt_cache_ttl == "5m" else 2.0
 
 VERDICTS = ("on_subject", "other_subject", "off_topic")
 
@@ -104,13 +118,18 @@ def _cache_creation_tokens(usage) -> int:
     return 0
 
 
-def _charge(total: int, cache_read: int) -> int:
-    """Tokens to charge against the daily cap, discounting cached reads to
-    CACHE_READ_WEIGHT so the cap tracks real cost. Cached reads are still part of
-    `total`; we subtract the discounted portion."""
-    if cache_read <= 0:
-        return total
-    return max(0, total - int(round(cache_read * (1 - CACHE_READ_WEIGHT))))
+def _charge(total: int, cache_read: int, cache_creation: int = 0) -> int:
+    """Tokens to charge against the daily cap: cached reads discounted to
+    CACHE_READ_WEIGHT and cache writes up-weighted to CACHE_WRITE_WEIGHT, so the cap
+    tracks real cost. Both read and written tokens are already part of `total` at
+    raw count (LiteLLM includes cache_creation_input_tokens in prompt_tokens); we
+    adjust each portion to its billed weight."""
+    charged = total
+    if cache_read > 0:
+        charged -= int(round(cache_read * (1 - CACHE_READ_WEIGHT)))
+    if cache_creation > 0:
+        charged += int(round(cache_creation * (CACHE_WRITE_WEIGHT - 1)))
+    return max(0, charged)
 
 
 def _with_breakpoint(turn: dict) -> dict:
@@ -234,7 +253,8 @@ def run_tutor(model: str, system: str, history: list[dict]) -> tuple[str, int]:
     if not reply:
         raise ModelError("tutor returned an empty reply")
     usage = getattr(resp, "usage", None)
-    return reply, _charge(_usage_tokens(usage), _cache_read_tokens(usage))
+    return reply, _charge(_usage_tokens(usage), _cache_read_tokens(usage),
+                          _cache_creation_tokens(usage))
 
 
 def _usage_tokens(usage) -> int:
@@ -328,8 +348,9 @@ async def run_tutor_stream(model: str, system: str, history: list[dict]):
     if not got_content:
         raise ModelError("tutor returned an empty reply")
     yield {
-        # `tokens` is what the daily cap is charged: total with cached reads discounted.
-        "tokens": _charge(tokens, cache_read),
+        # `tokens` is what the daily cap is charged: total with cached reads discounted
+        # and cache writes up-weighted to their billed premium.
+        "tokens": _charge(tokens, cache_read, cache_creation),
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "cache_read": cache_read,
@@ -490,12 +511,13 @@ async def run_tutor_tools_stream(
                 reply_parts.append(content)
         partial = partial or not reply_parts
 
-    # Charge the daily cap: discount cached reads so it tracks real cost (each round
-    # re-sends a growing context, but the stable prefix is served from cache). Fall
-    # back to a size estimate ONLY when the provider reported no usage at all — a
-    # full-weight estimate must not override the intentional cached-read discount.
+    # Charge the daily cap: discount cached reads and up-weight cache writes so it
+    # tracks real cost (each round re-sends a growing context, but the stable prefix
+    # is served from cache). Fall back to a size estimate ONLY when the provider
+    # reported no usage at all — a full-weight estimate must not override the
+    # intentional cache weighting.
     if tokens > 0:
-        tokens = _charge(tokens, cache_read)
+        tokens = _charge(tokens, cache_read, cache_creation)
     else:
         tokens = _estimate_tokens(messages) + max(1, len("".join(reply_parts)) // 4)
     yield {

@@ -177,7 +177,7 @@ async function consumeStream(body, ph) {
   let buf = "";
   let started = false; // have we cleared the thinking dots for the first token?
   let writing = null;  // dots-mode "Writing answer …" count element, once answer streaming begins
-  let rawText = "";    // accumulated raw reply text (deltas), for conversation history
+  let rawText = "";    // accumulated raw reply text (deltas), for the live word count
   let outcome = "none"; // "done" (tutor replied) | "notice" (gate blocked / error)
   let debug = null;    // admin chat-test only: per-turn diagnostic record (else absent)
   while (true) {
@@ -191,7 +191,7 @@ async function consumeStream(body, ph) {
       if (!raw.trim()) continue;
       const ev = parseEvent(raw);
       if (ev.event === "delta") {
-        rawText += ev.data.text || ""; // always accumulate (history + done fallback)
+        rawText += ev.data.text || ""; // always accumulate (drives the word count)
         if (SHOW_RAW_STREAM) {
           if (!started) { ph.text.textContent = ""; started = true; }
           ph.text.appendChild(document.createTextNode(ev.data.text || ""));
@@ -295,14 +295,6 @@ function appendDebugEntry(userText, debug) {
   box.scrollTop = box.scrollHeight;
 }
 
-// Append a completed exchange to a form's in-memory conversation history (admin chat
-// test). The hidden `history` field carries it to the server on the next turn.
-function recordHistory(form, userText, assistantText) {
-  const h = form._history || (form._history = []);
-  h.push({ role: "user", content: userText }, { role: "assistant", content: assistantText });
-  if (h.length > 40) form._history = h.slice(-40); // last 20 exchanges (matches server MAX_HISTORY_TURNS)
-}
-
 async function streamChat(form) {
   if (chatInFlight) return; // a turn is already streaming
   const ta = form.querySelector("textarea");
@@ -311,11 +303,10 @@ async function streamChat(form) {
   const url = form.getAttribute("data-stream");
   if (!url) { form.submit(); return; } // no streaming endpoint → native fallback
 
-  // If this form tracks a conversation (admin chat test), refresh its hidden history
-  // field so the prior turns ride along. Then serialize the whole form (message +
-  // subject_id + history) BEFORE clearing the textarea below.
-  const histInput = form.querySelector('input[name="history"]');
-  if (histInput) histInput.value = JSON.stringify(form._history || []);
+  // Serialize the form (message + subject_id) BEFORE clearing the textarea below.
+  // Conversation history is not sent: the server rebuilds it from the persisted
+  // thread (see pipeline._history_for_tutor; the admin chat test uses its own
+  // persisted is_test thread the same way).
   const body = new URLSearchParams(new FormData(form));
 
   chatInFlight = true;
@@ -348,10 +339,6 @@ async function streamChat(form) {
       // Convert the stuck "thinking" bubble into a friendly failure so the student
       // isn't left waiting forever.
       failBubble(ph);
-    } else if (histInput && result.type === "done") {
-      // Only an answered (on-subject) turn becomes history — blocked/other/error turns
-      // are excluded, mirroring the tutor's real context.
-      recordHistory(form, text, result.raw);
     }
     // Admin chat test only: log the per-turn debug record (every turn, including
     // blocked/error ones). The student page emits no debug event and has no panel.
@@ -436,16 +423,13 @@ function setupBirthdateAge() {
   });
 }
 
-// "New conversation" on the admin chat-test page: clear the transcript and the
-// in-memory history so the next message starts a fresh conversation.
+// "New conversation" on the admin chat-test page: clear the transcript and wipe the
+// server-side test thread so the next message starts a fresh conversation.
 function setupTestChat() {
   const form = document.getElementById("chat-form");
   const clearBtn = document.getElementById("test-clear");
   if (!form || !clearBtn) return;
   clearBtn.addEventListener("click", function () {
-    form._history = [];
-    const histInput = form.querySelector('input[name="history"]');
-    if (histInput) histInput.value = "[]";
     const box = document.getElementById("messages");
     if (box) box.innerHTML = "";
     const dbg = document.getElementById("debug-log");
