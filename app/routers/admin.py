@@ -497,13 +497,34 @@ def conversations(request: Request, _: bool = Depends(auth.current_admin)):
 
 
 @router.get("/conversations/{conversation_id}", response_class=HTMLResponse)
-def conversation_detail(request: Request, conversation_id: int, _: bool = Depends(auth.current_admin)):
+def conversation_detail(request: Request, conversation_id: int, full: bool = False,
+                        _: bool = Depends(auth.current_admin)):
     conv = models.get_conversation(conversation_id)
     if conv is None:
         return RedirectResponse("/admin/conversations", status_code=303)
-    messages = models.get_messages(conversation_id, include_blocked=True)
+    # Windowed to the most recent turns; a "Load earlier" link pages back (?full=1 is the
+    # no-JS fallback that renders the whole thread). Admin sees ALL turns, including
+    # blocked ones (visible_only=False).
+    limit = None if full else settings.chat_initial_messages
+    messages, has_more = models.get_messages_page(conversation_id, limit=limit, visible_only=False)
     return templates.TemplateResponse(
-        request, "admin/conversation.html", {"conv": conv, "messages": messages})
+        request, "admin/conversation.html",
+        {"conv": conv, "conversation_id": conversation_id, "messages": messages,
+         "has_more": has_more, "oldest_id": messages[0]["id"] if messages else None})
+
+
+@router.get("/conversations/{conversation_id}/history", response_class=HTMLResponse)
+def conversation_history(request: Request, conversation_id: int, before: int,
+                         _: bool = Depends(auth.current_admin)):
+    """One page of older transcript messages (before message id `before`), for the admin
+    "Load earlier" link. Same bubble partials as the page, oldest-first, led by a fresh
+    loader when still-older messages remain."""
+    messages, has_more = models.get_messages_page(
+        conversation_id, before_id=before, limit=settings.chat_history_step, visible_only=False)
+    return templates.TemplateResponse(
+        request, "admin/_transcript_chunk.html",
+        {"conversation_id": conversation_id, "messages": messages,
+         "has_more": has_more, "oldest_id": messages[0]["id"] if messages else None})
 
 
 # ------------------------------- chat test page ----------------------------

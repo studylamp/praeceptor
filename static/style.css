@@ -90,6 +90,16 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* Temporary spacer (added by app.js per turn) so a new question can scroll to the top
    with the answer streaming in below; removed when the turn finishes. */
 .chat-spacer { flex: 0 0 auto; }
+/* "Load earlier messages" pager (student chat + admin transcript). Centered pill; a
+   click prepends the previous page above the current view (display-only windowing). */
+.load-earlier {
+  align-self: center; flex: 0 0 auto;
+  margin: 0.15rem 0 0.35rem; padding: 0.3rem 0.9rem;
+  font-size: 0.85rem; color: var(--muted); text-decoration: none;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer;
+}
+.load-earlier:hover { color: var(--accent); border-color: var(--accent); }
 .bubble .who { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.2rem; }
 .bubble .text { white-space: pre-wrap; word-wrap: break-word; }
 /* Rendered-markdown tutor replies: normal whitespace + tidy block spacing. */

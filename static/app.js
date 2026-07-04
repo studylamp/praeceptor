@@ -352,6 +352,86 @@ async function streamChat(form) {
   }
 }
 
+// --- load earlier history -----------------------------------------------------
+// The "Load earlier messages" link (student chat + admin transcript) pages older
+// messages into view without a full reload. Display only — the server rebuilds the
+// tutor's context separately. The fetched fragment is server-rendered HTML: a fresh
+// loader if older messages still remain, then the older bubbles (oldest-first). We
+// splice it in where the clicked loader was and keep the viewport from jumping.
+async function loadEarlier(link) {
+  if (link.dataset.loading === "1") return; // ignore repeat clicks while fetching
+  const url = link.getAttribute("data-history");
+  if (!url) { window.location = link.href; return; } // no JS endpoint → full-page fallback
+  link.dataset.loading = "1";
+  const label = link.textContent;
+  link.textContent = "Loading…";
+
+  // Scroll container: the chat box on the student page (fixed height, scrolls
+  // internally) or the page itself on the admin transcript.
+  const box = document.getElementById("messages");
+  const inBox = !!(box && box.contains(link));
+
+  try {
+    const resp = await fetch(url, { headers: { "X-Requested-With": "fetch" } });
+    // Session expired: the server 303s to a login page → send the browser there.
+    if (resp.redirected && resp.url.indexOf("/login") >= 0) { window.location = resp.url; return; }
+    if (!resp.ok) throw new Error("history fetch failed");
+    const tmp = document.createElement("div");
+    tmp.innerHTML = await resp.text();
+
+    // Anchor on the message just below the loader so it stays put as older content lands
+    // above it. Measured HERE (after the fetch, right before the splice) so a chat reply
+    // that finished streaming mid-request — which writes box.scrollTop via unpin() — can't
+    // shift the baseline; only our own synchronous insertion moves the anchor now.
+    const anchor = link.nextElementSibling;
+    const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
+
+    // The student box is aria-live="polite" (to announce the streaming reply). Silence it
+    // while we prepend a page of OLD messages so a screen reader doesn't read them all
+    // aloud; restore it afterwards for future replies. (The admin transcript isn't live.)
+    if (inBox) box.setAttribute("aria-live", "off");
+
+    // Move the fetched nodes (fresh loader + older bubbles) in ahead of the old loader,
+    // then drop it. Collect element nodes so we can typeset their math afterwards.
+    const parent = link.parentNode;
+    const inserted = [];
+    while (tmp.firstChild) {
+      const node = tmp.firstChild;
+      if (node.nodeType === 1) inserted.push(node);
+      parent.insertBefore(node, link);
+    }
+    parent.removeChild(link);
+    inserted.forEach(function (n) { renderMath(n); });
+
+    // Restore the anchor's on-screen position: however far it moved down (older content
+    // height + any KaTeX reflow), scroll by the same amount so the view doesn't jump.
+    if (anchor) {
+      const delta = anchor.getBoundingClientRect().top - anchorTop;
+      if (inBox) box.scrollTop += delta;
+      else window.scrollBy(0, delta);
+    }
+    if (inBox) box.setAttribute("aria-live", "polite");
+
+    // Keep keyboard/screen-reader focus with the reading position (removing the old loader
+    // dropped focus to <body>): the fresh loader if more history remains, else the first
+    // newly revealed message. preventScroll so this doesn't fight the anchor adjustment.
+    const focusTarget = inserted.find(function (n) {
+      return n.classList && n.classList.contains("load-earlier");
+    }) || inserted[0];
+    if (focusTarget) {
+      // Anchors are focusable already; a bubble <div> needs a programmatic tabindex.
+      if (!focusTarget.classList.contains("load-earlier") && !focusTarget.hasAttribute("tabindex")) {
+        focusTarget.setAttribute("tabindex", "-1");
+      }
+      focusTarget.focus({ preventScroll: true });
+    }
+  } catch (e) {
+    // Leave the loader in place with a cue so a failed load doesn't look un-clicked.
+    link.textContent = "Couldn't load — tap to try again";
+    link.dataset.loading = "";
+  }
+}
+
 // --- events -------------------------------------------------------------------
 
 // Enter sends the chat message; Shift+Enter inserts a newline.
@@ -370,6 +450,15 @@ document.body.addEventListener("submit", function (e) {
   if (!form || form.id !== "chat-form") return;
   e.preventDefault();
   streamChat(form);
+});
+
+// "Load earlier messages" (student chat + admin transcript). Delegated so it also
+// catches the fresh loader that each fetched page brings with it.
+document.body.addEventListener("click", function (e) {
+  const link = e.target.closest ? e.target.closest(".load-earlier") : null;
+  if (!link) return;
+  e.preventDefault();
+  loadEarlier(link);
 });
 
 // --- admin: subject preset prefill -------------------------------------------

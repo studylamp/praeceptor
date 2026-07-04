@@ -1,0 +1,5 @@
+{# A page of older transcript messages (oldest-first), prepended above the current view
+   by app.js. Leads with a fresh loader when still-older messages remain, so repeated
+   clicks page back to the start of the conversation. #}
+{% if has_more %}{% include "admin/_loader.html" %}{% endif %}
+{% for m in messages %}{% include "admin/_bubble.html" %}{% endfor %}

@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from app import auth, model_client, models, pipeline, tutor_runtime
+from app.config import settings
 from app.prompts import build_tutor_system
 from app.render import render_tutor_markdown
 from app.security import verify_secret
@@ -118,18 +119,42 @@ def _notice(request: Request, student_text: str, notice: str) -> HTMLResponse:
 
 
 @router.get("/chat/{subject_id}", response_class=HTMLResponse)
-def chat_page(request: Request, subject_id: int, student=Depends(auth.current_student)):
+def chat_page(request: Request, subject_id: int, full: bool = False,
+              student=Depends(auth.current_student)):
     sub = _owned_subject(student, subject_id)
     if sub is None:
         return RedirectResponse("/subjects", status_code=303)
     conv_id = models.get_or_create_conversation(student["id"], subject_id)
-    # Show the real dialogue: tutor replies + on-subject student turns (skip blocked
-    # off-topic / other-subject / error turns, which were never answered).
-    rows = models.get_messages(conv_id, include_blocked=False)
-    history = [m for m in rows if m["role"] == "tutor" or m["gate_verdict"] in (None, "on_subject")]
+    # Show the real dialogue: tutor replies + on-subject student turns (blocked
+    # off-topic / other-subject / error turns were never answered → hidden). Windowed to
+    # the most recent messages; a "Load earlier" link pages back (?full=1 is the no-JS
+    # fallback that renders the whole thread). Display only — the tutor's context is
+    # unaffected (see pipeline._history_for_tutor).
+    limit = None if full else settings.chat_initial_messages
+    history, has_more = models.get_messages_page(conv_id, limit=limit, visible_only=True)
     return templates.TemplateResponse(
         request, "student/chat.html",
-        {"student": student, "subject": sub, "history": history},
+        {"student": student, "subject": sub, "history": history,
+         "has_more": has_more, "oldest_id": history[0]["id"] if history else None},
+    )
+
+
+@router.get("/chat/{subject_id}/history", response_class=HTMLResponse)
+def chat_history(request: Request, subject_id: int, before: int,
+                 student=Depends(auth.current_student)):
+    """One page of older messages (before message id `before`), for the "Load earlier"
+    link. Returns the same bubble partials the page uses, oldest-first, led by a fresh
+    loader when still-older messages remain. Display only."""
+    sub = _owned_subject(student, subject_id)
+    if sub is None:
+        return RedirectResponse("/subjects", status_code=303)
+    conv_id = models.get_or_create_conversation(student["id"], subject_id)
+    history, has_more = models.get_messages_page(
+        conv_id, before_id=before, limit=settings.chat_history_step, visible_only=True)
+    return templates.TemplateResponse(
+        request, "student/_history_chunk.html",
+        {"subject": sub, "history": history,
+         "has_more": has_more, "oldest_id": history[0]["id"] if history else None},
     )
 
 

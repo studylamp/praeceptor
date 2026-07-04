@@ -11,6 +11,7 @@
 </header>
 
 <div id="messages" class="messages" aria-live="polite">
+  {% if has_more %}{% include "student/_loader.html" %}{% endif %}
   {% for m in history %}{% include "student/_bubble.html" %}{% endfor %}
 </div>
 

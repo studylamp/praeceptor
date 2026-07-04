@@ -245,6 +245,53 @@ def get_messages(conversation_id: int, include_blocked: bool = True):
         return conn.execute(sql, (conversation_id,)).fetchall()
 
 
+# The student view shows only the real dialogue: tutor replies + on-subject student
+# turns. Kept as SQL (not a Python post-filter) so LIMIT and the has_more probe count
+# only shown rows. Mirrors pipeline._history_for_tutor's visibility rule exactly.
+_VISIBLE_MESSAGE_FILTER = (
+    " AND blocked = 0 AND (role = 'tutor' OR gate_verdict IS NULL "
+    "OR gate_verdict = 'on_subject')"
+)
+
+
+def get_messages_page(conversation_id: int, before_id: Optional[int] = None,
+                      limit: Optional[int] = None, visible_only: bool = False):
+    """A page of a conversation's messages for lazy "load earlier" display, returned
+    oldest-first with a `has_more` flag. Display-only paging — the tutor's context is
+    rebuilt separately (pipeline._history_for_tutor) and is not affected by this.
+
+    `before_id` is a cursor: return only messages older than it (id < before_id); None
+    starts from the newest. `limit` bounds the page (None = the whole thread, e.g. the
+    no-JS "show all" fallback), and one extra row is fetched to compute `has_more`.
+    `visible_only` applies the STUDENT visibility filter (drop blocked turns and
+    non-on_subject student turns); the admin transcript passes False to see every turn.
+    """
+    sql = "SELECT * FROM messages WHERE conversation_id = ?"
+    params: list = [conversation_id]
+    if visible_only:
+        sql += _VISIBLE_MESSAGE_FILTER
+    if before_id is not None:
+        sql += " AND id < ?"
+        params.append(before_id)
+    if limit is not None and limit < 1:
+        limit = 1  # a non-positive window (misconfigured knob) would otherwise render an
+                   # empty page yet still flag has_more — clamp so paging stays coherent
+    if limit is None:
+        # Whole thread, already oldest-first.
+        sql += " ORDER BY id ASC"
+        with db() as conn:
+            return conn.execute(sql, tuple(params)).fetchall(), False
+    # Newest `limit` (+1 to detect older messages), then flip to oldest-first for display.
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit + 1)
+    with db() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    has_more = len(rows) > limit
+    rows = list(rows[:limit])
+    rows.reverse()
+    return rows, has_more
+
+
 # ------------------------------- usage ------------------------------
 
 def get_usage(student_id: int, date: str):

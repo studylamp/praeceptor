@@ -1,0 +1,5 @@
+{# "Load earlier messages" control at the top of the message list. The href is the
+   no-JS fallback (?full=1 renders the whole thread server-side); app.js intercepts the
+   click and fetches `data-history` to prepend just the previous page. #}
+<a class="load-earlier" href="/chat/{{ subject.id }}?full=1"
+   data-history="/chat/{{ subject.id }}/history?before={{ oldest_id }}">Load earlier messages</a>

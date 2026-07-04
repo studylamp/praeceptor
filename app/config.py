@@ -54,6 +54,13 @@ class Settings:
     # arg. The commit SHA is the ground truth of what's deployed for a git-pull appliance.
     app_version: str = os.getenv("APP_VERSION", "dev")
 
+    # Display-only paging of the chat/transcript message lists: how many messages show
+    # on open, and how many each "Load earlier" click reveals. Purely presentational —
+    # the tutor's context is rebuilt separately (pipeline._history_for_tutor) and is
+    # unaffected. Kept small so long threads (e.g. creative writing) still open light.
+    chat_initial_messages: int = int(os.getenv("CHAT_INITIAL_MESSAGES", "10"))
+    chat_history_step: int = int(os.getenv("CHAT_HISTORY_STEP", "20"))
+
     # --- Tool use / sandboxed code execution (see app/sandbox, app/tools) ---
     # Master switch for the tutor's tools (per-subject `tools_enabled` gates each subject
     # on top of this). Off → the tutor behaves exactly as before.

@@ -1,0 +1,5 @@
+{# A page of older messages (oldest-first), prepended above the current view by app.js.
+   Leads with a fresh loader when still-older messages remain, so repeated clicks page
+   all the way back to the start of the conversation. #}
+{% if has_more %}{% include "student/_loader.html" %}{% endif %}
+{% for m in history %}{% include "student/_bubble.html" %}{% endfor %}
