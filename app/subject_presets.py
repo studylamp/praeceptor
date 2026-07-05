@@ -1,8 +1,9 @@
 """Starter presets for the admin "new subject" form.
 
-A menu of common USA elementary / middle / high-school subjects. Picking one
-prefills the subject's name, grade level, gate scope, tutoring style, and answer
-policy with sensible defaults the parent can then edit (or clear). These are just
+A menu of common USA elementary / middle / high-school subjects, plus a generic
+"sane defaults" entry that only fills tutoring style and answer policy. Picking a
+subject preset prefills the subject's name, grade level, gate scope, tutoring style,
+and answer policy with sensible defaults the parent can then edit (or clear). These are just
 suggested starting points — nothing here is enforced; the saved subject is whatever
 the form submits.
 """
@@ -38,13 +39,28 @@ _LANG_POLICY = ("Prompt the student to produce the language themselves; correct 
                 "rather than simply translating for them.")
 
 
-def _p(group, key, name, grade, scope, style, policy):
+def _p(group, key, name, grade, scope, style, policy, label=None):
     return {"group": group, "key": key, "name": name, "grade_level": grade,
-            "gate_scope": scope, "style": style, "answer_policy": policy}
+            "gate_scope": scope, "style": style, "answer_policy": policy,
+            "label": label or name}
 
 
-# Ordered list of presets. `key` is a stable id used by the form's <option> value.
+# Ordered list of presets. `key` is a stable id used by the form's <option> value;
+# `label` is the menu text (defaults to `name`, which is what gets prefilled).
 PRESETS = [
+    # --- Generic ---
+    # Subject-agnostic starting point: just a sound tutoring style and answer policy.
+    # Name/grade/scope stay blank for the parent to fill in (a blank gate scope falls
+    # back to the subject name at prompt time), and the form's prefill JS skips empty
+    # preset fields so picking this never wipes anything already typed.
+    _p("Generic", "generic-defaults", "", "", "",
+       "Patient and encouraging. Explain clearly at the student's level, one idea at a "
+       "time, with examples — and check understanding with follow-up questions.",
+       "Don't hand the student complete answers or finished work. Guide step by step "
+       "with hints and questions so they do the thinking, and confirm or gently correct "
+       "their attempt once they've made one.",
+       label="Sane defaults (any subject)"),
+
     # --- Elementary (K–5) ---
     _p("Elementary (K–5)", "elem-math", "Elementary Math", "Grades K–5",
        "Elementary arithmetic: counting, place value, addition, subtraction, multiplication, "

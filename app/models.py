@@ -5,6 +5,7 @@ sqlite3.Row (dict-like). Datetimes are stored/compared as UTC text via SQLite's
 datetime('now'); the `date` used for caps is YYYY-MM-DD.
 """
 
+import re
 from typing import Optional
 
 from app.db import db
@@ -108,6 +109,44 @@ def update_subject(subject_id: int, **fields) -> None:
     cols = ", ".join(f"{k} = ?" for k in fields)
     with db() as conn:
         conn.execute(f"UPDATE subjects SET {cols} WHERE id = ?", (*fields.values(), subject_id))
+
+
+def _copy_name(source_name: str, taken: set) -> str:
+    """Name for a subject copied into a student whose existing names are `taken`:
+    the source name if free, else "Base (2)", "Base (3)", ... A trailing "(n)" on
+    the source is treated as a copy suffix, so copying "Math (2)" yields "Math (3)"
+    rather than "Math (2) (2)"."""
+    if source_name not in taken:
+        return source_name
+    base = re.sub(r"\s*\(\d+\)$", "", source_name).strip() or source_name
+    n = 2
+    while f"{base} ({n})" in taken:
+        n += 1
+    return f"{base} ({n})"
+
+
+def copy_subject(subject_id: int, target_student_id: int) -> Optional[int]:
+    """Duplicate a subject onto target_student_id (which may be its own student)
+    with every setting carried over. Conversations are NOT copied — the new
+    subject starts with an empty history. Returns the new subject id, or None if
+    the source subject no longer exists. One IMMEDIATE transaction, so concurrent
+    copies (e.g. a double-clicked submit) can't race the name dedup into
+    duplicate names."""
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        src = conn.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+        if src is None:
+            return None
+        taken = {r["name"] for r in conn.execute(
+            "SELECT name FROM subjects WHERE student_id = ?", (target_student_id,))}
+        fields = {k: src[k] for k in _SUBJECT_COLS if k != "name"}
+        cols = ["student_id", "name", *fields.keys()]
+        placeholders = ", ".join("?" for _ in cols)
+        cur = conn.execute(
+            f"INSERT INTO subjects ({', '.join(cols)}) VALUES ({placeholders})",
+            (target_student_id, _copy_name(src["name"], taken), *fields.values()),
+        )
+        return int(cur.lastrowid)
 
 
 def delete_subject(subject_id: int) -> None:

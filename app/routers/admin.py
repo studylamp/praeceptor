@@ -422,6 +422,30 @@ def subject_toggle_active(request: Request, subject_id: int, _: bool = Depends(a
     return RedirectResponse(f"/admin/students/{subject['student_id']}", status_code=303)
 
 
+@router.get("/subjects/{subject_id}/copy", response_class=HTMLResponse)
+def subject_copy_form(request: Request, subject_id: int, _: bool = Depends(auth.current_admin)):
+    subject = models.get_subject(subject_id)
+    if subject is None:
+        return RedirectResponse("/admin", status_code=303)
+    student = models.get_student(subject["student_id"])
+    return templates.TemplateResponse(
+        request, "admin/subject_copy.html",
+        {"subject": subject, "student": student, "students": models.list_students()})
+
+
+@router.post("/subjects/{subject_id}/copy")
+def subject_copy(request: Request, subject_id: int, _: bool = Depends(auth.current_admin),
+                 target_student_id: int = Form(...)):
+    subject = models.get_subject(subject_id)
+    if subject is None:
+        return RedirectResponse("/admin", status_code=303)
+    if models.get_student(target_student_id) is None:
+        return _redir_student(subject["student_id"], "That student no longer exists.")
+    if models.copy_subject(subject_id, target_student_id) is None:
+        return RedirectResponse("/admin", status_code=303)  # deleted while confirming
+    return RedirectResponse(f"/admin/students/{target_student_id}", status_code=303)
+
+
 @router.get("/subjects/{subject_id}/delete", response_class=HTMLResponse)
 def subject_delete_confirm(request: Request, subject_id: int, _: bool = Depends(auth.current_admin)):
     subject = models.get_subject(subject_id)

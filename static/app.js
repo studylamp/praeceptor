@@ -529,7 +529,12 @@ function setupSubjectPresets() {
   select.addEventListener("change", function () {
     const opt = select.options[select.selectedIndex];
     if (!opt || !opt.value) return;
-    MAP.forEach(function (m) { setField(m[1], opt.dataset[m[0]] || ""); });
+    // Skip fields the preset leaves blank (the generic preset only sets style +
+    // policy) so picking it never wipes a name/grade/scope already typed.
+    MAP.forEach(function (m) {
+      const v = opt.dataset[m[0]] || "";
+      if (v) setField(m[1], v);
+    });
   });
   const clearBtn = document.getElementById("subject-clear");
   if (clearBtn) clearBtn.addEventListener("click", function () {

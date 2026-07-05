@@ -9,9 +9,9 @@
       action="{% if creating %}/admin/students/{{ student.id }}/subjects{% else %}/admin/subjects/{{ subject.id }}{% endif %}"
       class="form">
   <div class="preset-bar">
-    <label>Start from a common subject
+    <label>Start from a preset
       <select id="subject-preset">
-        <option value="">— Choose to prefill name, scope, style &amp; policy —</option>
+        <option value="">— Choose a starting point to prefill fields —</option>
         {% for group, items in preset_groups %}
         <optgroup label="{{ group }}">
           {% for p in items %}
@@ -20,7 +20,7 @@
                   data-grade="{{ p.grade_level }}"
                   data-scope="{{ p.gate_scope }}"
                   data-style="{{ p.style }}"
-                  data-policy="{{ p.answer_policy }}">{{ p.name }}</option>
+                  data-policy="{{ p.answer_policy }}">{{ p.label }}</option>
           {% endfor %}
         </optgroup>
         {% endfor %}

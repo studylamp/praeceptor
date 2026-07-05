@@ -57,6 +57,7 @@
         <td class="rowactions">
           <a href="/admin/subjects/{{ s.id }}/context">Context</a>
           <a href="/admin/subjects/{{ s.id }}/edit">Edit</a>
+          <a href="/admin/subjects/{{ s.id }}/copy">Copy</a>
           <form method="post" action="/admin/subjects/{{ s.id }}/active">
             <button class="link" type="submit">{{ "Deactivate" if s.active else "Reactivate" }}</button>
           </form>

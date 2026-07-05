@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Copy subject — Admin{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin/students/{{ student.id }}">← {{ student.name }}</a></p>
+<h1>Copy “{{ subject.name }}”</h1>
+<p class="muted">Creates a new subject with every setting carried over — grade, scope, style,
+  policy, curriculum, model, tools, and active/inactive status. Conversation history is
+  not copied. If the chosen student already has a subject with this name, the copy is
+  numbered — “{{ subject.name }} (2)”, “{{ subject.name }} (3)”, and so on.</p>
+<form method="post" action="/admin/subjects/{{ subject.id }}/copy" class="form">
+  <label>Copy to student
+    <select name="target_student_id">
+      {% for st in students %}
+      <option value="{{ st.id }}"{{ ' selected' if st.id == student.id else '' }}>{{ st.name }}{{ ' (this student)' if st.id == student.id else '' }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button type="submit">Create copy</button>
+    <a href="/admin/students/{{ student.id }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
