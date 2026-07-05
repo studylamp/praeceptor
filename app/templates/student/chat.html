@@ -10,6 +10,53 @@
   </nav>
 </header>
 
+{% if multi %}
+{# Chat switcher (multi-chat subjects): pick a chat, start a new one, rename or
+   archive the open one. The <select> auto-submits via app.js; <noscript> keeps an
+   explicit Open button. Chats without a name fall back to a date-based label. #}
+<div class="chat-bar">
+  <form method="get" action="/chat/{{ subject.id }}" class="chat-switch">
+    <label for="chat-select" class="chat-bar-label">Chat</label>
+    <select id="chat-select" name="chat" data-autosubmit>
+      {% for c in chats if not c.archived %}
+      <option value="{{ c.id }}"{{ " selected" if current_chat and c.id == current_chat.id else "" }}>{{ c.title or "Chat from " ~ (c.started_at | localdt) }}</option>
+      {% endfor %}
+      {% set archived_chats = chats | selectattr("archived") | list %}
+      {% if archived_chats %}
+      <optgroup label="Archived">
+        {% for c in archived_chats %}
+        <option value="{{ c.id }}"{{ " selected" if current_chat and c.id == current_chat.id else "" }}>{{ c.title or "Chat from " ~ (c.started_at | localdt) }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+    </select>
+    <noscript><button type="submit">Open</button></noscript>
+  </form>
+  <details class="chat-menu">
+    <summary>New chat</summary>
+    <form method="post" action="/chat/{{ subject.id }}/new" class="chat-mini-form">
+      <input name="title" maxlength="60" placeholder="Name it — e.g. Dragon book" aria-label="New chat name">
+      <button type="submit">Start</button>
+    </form>
+  </details>
+  {% if current_chat %}
+  <details class="chat-menu">
+    <summary>Rename</summary>
+    <form method="post" action="/chat/{{ subject.id }}/chats/{{ current_chat.id }}/rename" class="chat-mini-form">
+      <input name="title" maxlength="60" value="{{ current_chat.title or '' }}" placeholder="Chat name" required aria-label="Chat name">
+      <button type="submit">Save</button>
+    </form>
+  </details>
+  <form method="post" action="/chat/{{ subject.id }}/chats/{{ current_chat.id }}/archive" class="chat-archive">
+    <button type="submit" class="link">{{ "Unarchive" if current_chat.archived else "Archive" }}</button>
+  </form>
+  {% endif %}
+</div>
+{% if current_chat and current_chat.archived %}
+<p class="banner">This chat is archived — it’s hidden from your main list, but you can keep talking here or tap Unarchive.</p>
+{% endif %}
+{% endif %}
+
 <div id="messages" class="messages" aria-live="polite">
   {% if has_more %}{% include "student/_loader.html" %}{% endif %}
   {% for m in history %}{% include "student/_bubble.html" %}{% endfor %}
@@ -18,6 +65,7 @@
 <form id="chat-form" class="chat-form"
       method="post" action="/chat/{{ subject.id }}/send"
       data-stream="/chat/{{ subject.id }}/stream">
+  {% if multi and current_chat %}<input type="hidden" name="conversation_id" value="{{ current_chat.id }}">{% endif %}
   <textarea name="message" rows="2" placeholder="Ask your {{ subject.name }} tutor…" required></textarea>
   <button type="submit">Send</button>
 </form>

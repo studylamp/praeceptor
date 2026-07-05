@@ -1,11 +1,13 @@
 {# A roll-up table of conversations. Expects `conversations` (rows from
-   models.list_conversations). Used by both the global log and a student's page. #}
+   models.list_conversations). Used by both the global log and a student's page.
+   Multi-chat subjects show one row per chat; unnamed chats show a dash. #}
 <table class="grid">
-  <thead><tr><th>Subject</th><th>Student</th><th>Messages</th><th>Blocked</th><th>Last activity</th><th></th></tr></thead>
+  <thead><tr><th>Subject</th><th>Chat</th><th>Student</th><th>Messages</th><th>Blocked</th><th>Last activity</th><th></th></tr></thead>
   <tbody>
   {% for c in conversations %}
     <tr>
       <td>{{ c.subject_name }}{% if not c.subject_active %} <span class="badge">inactive</span>{% endif %}</td>
+      <td>{{ c.title or "Chat from " ~ (c.started_at | localdt) }}{% if c.archived %} <span class="badge">archived</span>{% endif %}</td>
       <td>{{ c.student_name }}</td>
       <td>{{ c.message_count }}</td>
       <td>{% if c.blocked_count %}<span class="badge warn">{{ c.blocked_count }}</span>{% else %}0{% endif %}</td>
@@ -13,7 +15,7 @@
       <td><a href="/admin/conversations/{{ c.id }}">View →</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="6">No conversations yet.</td></tr>
+    <tr><td colspan="7">No conversations yet.</td></tr>
   {% endfor %}
   </tbody>
 </table>

@@ -164,6 +164,29 @@ table.guide code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-
   flex: 1; resize: vertical; padding: 0.6rem; border: 1px solid var(--border);
   border-radius: 8px; font: inherit;
 }
+
+/* Multi-chat switcher bar (student chat page): pick / start / rename / archive chats. */
+.chat-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.chat-switch { display: flex; align-items: center; gap: 0.4rem; }
+.chat-bar-label { color: var(--muted); font-size: 0.9rem; }
+.chat-bar select {
+  font: inherit; padding: 0.35rem 0.5rem; max-width: 16rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--fg);
+}
+.chat-menu summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.chat-menu summary:hover, .chat-menu[open] summary { color: var(--accent); }
+.chat-mini-form { display: flex; gap: 0.4rem; margin-top: 0.35rem; }
+.chat-mini-form input {
+  font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--border);
+  border-radius: 8px; width: 14rem; max-width: 60vw;
+}
+.chat-archive { display: inline; }
+.chat-archive button { font-size: 0.9rem; }
+
 /* Admin chat-test form: subject picker + "New conversation" on their own row above
    the message box. */
 .test-chat-form { flex-wrap: wrap; }

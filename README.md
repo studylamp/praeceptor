@@ -47,6 +47,10 @@ around a frontier model that adds exactly the controls a homeschooling parent ne
 - **Subject picker** — only shows the subjects the parent enrolled them in.
 - **Focused chat** — a Socratic-by-default tutor scoped to the chosen subject, with
   streaming replies and a "thinking…" indicator.
+- **Multiple chats per subject** (optional, per subject) — start a new chat per project
+  (a book being written, a recipe being refined) and switch between them without losing
+  each one's context; name, rename, and archive them. Subjects that suit one continuous
+  conversation (math) leave it off and behave as a single thread.
 - **Rich rendering** — Markdown, real math typesetting (KaTeX), inline diagrams, and
   plotted function graphs.
 
@@ -69,7 +73,9 @@ around a frontier model that adds exactly the controls a homeschooling parent ne
   reset and the times shown on conversation transcripts (messages are stored in UTC and
   converted for display). Defaults to the server's local zone until set.
 - **Full transcript review** — read any conversation, including off-topic attempts the
-  gate blocked.
+  gate blocked. Multi-chat subjects list every chat (archived ones included) by name —
+  unnamed chats show their start date — and individual chats can be deleted from their
+  transcript page.
 - **Built-in chat test** — an admin sandbox that runs the *full* student pipeline
   (gate → tutor) against any subject, with a per-turn debug panel (gate verdict, token
   counts, cache hits, tool rounds).

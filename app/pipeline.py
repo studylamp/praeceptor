@@ -26,6 +26,10 @@ SYSTEM_FAIL_MSG = (
     "Sorry — something went wrong on my end, so I couldn't finish that. Please wait a "
     "moment and try again. If it keeps happening, ask your parent to check on the tutor."
 )
+# Shown when a message targets a chat that no longer exists (e.g. a parent deleted it
+# while the page was open). Retrying can't fix it — point at reloading instead.
+CHAT_GONE_MSG = ("This chat isn't available anymore — reload the page, then pick a "
+                 "chat or start a new one.")
 
 # Cap how much prior dialogue the tutor sees — for token cost and multi-turn drift —
 # but trim in STEPS, never a per-turn sliding window. Prompt caching is a byte-prefix
@@ -198,9 +202,12 @@ class Prepared:
     gate_reason: Optional[str] = None
 
 
-def prepare(student_id: int, subject_id: int, text: str) -> Prepared:
+def prepare(student_id: int, subject_id: int, text: str,
+            conversation_id: Optional[int] = None) -> Prepared:
     """Caps -> gate -> branch. Persists every non-on_subject turn (as the old
-    pipeline did); returns the carry-over context when the message is on-subject."""
+    pipeline did); returns the carry-over context when the message is on-subject.
+    `conversation_id` targets a specific chat (multi-chat subjects); None = the
+    subject's current thread."""
     student = models.get_student(student_id)
     subject = models.get_subject(subject_id)
     # Subject must exist, belong to this student, and be active (a stale tab on a
@@ -213,7 +220,21 @@ def prepare(student_id: int, subject_id: int, text: str) -> Prepared:
         return Prepared(result=PipelineResult(status="capped", message=CAPPED_MSG))
 
     enrolled = models.list_subjects(student_id, active_only=True)
-    conv_id = models.get_or_create_conversation(student_id, subject_id)
+    # An explicit chat target is honored only while the subject allows multiple chats:
+    # once the parent turns the flag off ("one continuous conversation"), a stale tab's
+    # id must not keep side threads alive — the turn falls back to the current thread.
+    if conversation_id is not None and not subject["multi_chat_enabled"]:
+        conversation_id = None
+    if conversation_id is None:
+        conv_id = models.get_or_create_conversation(student_id, subject_id)
+    else:
+        # The targeted chat must be this student's own REAL thread under THIS subject —
+        # a tampered or stale id must not read or write another thread's history.
+        conv = models.get_conversation(conversation_id)
+        if (conv is None or conv["student_id"] != student_id
+                or conv["subject_id"] != subject_id or conv["is_test"]):
+            return Prepared(result=PipelineResult(status="error", message=CHAT_GONE_MSG))
+        conv_id = conversation_id
     history = _history_for_tutor(conv_id)
 
     # 2. Gate (Haiku) + branch. Fails closed: a transport/parse failure yields "error".
@@ -269,9 +290,10 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def process_message(student_id: int, subject_id: int, text: str) -> PipelineResult:
+def process_message(student_id: int, subject_id: int, text: str,
+                    conversation_id: Optional[int] = None) -> PipelineResult:
     """Non-streaming pipeline (kept for the no-JS fallback and offline tests)."""
-    prep = prepare(student_id, subject_id, text)
+    prep = prepare(student_id, subject_id, text, conversation_id)
     if prep.result is not None:
         return prep.result
     try:

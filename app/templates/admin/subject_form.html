@@ -49,6 +49,9 @@
   </label>
   <label class="check"><input type="checkbox" name="tools_enabled" value="1" {{ "checked" if vals.get('tools_enabled') else "" }}>
     Allow computation tools <small>(tutor runs sandboxed Python/sympy for exact math — recommended for math &amp; science)</small></label>
+  <label class="check"><input type="checkbox" name="multi_chat_enabled" value="1" {{ "checked" if vals.get('multi_chat_enabled') else "" }}>
+    Allow multiple chats <small>(student can start new chats and switch between them — good for
+    creative-writing projects or recipes; leave off for one continuous conversation, e.g. math)</small></label>
   {% if not creating %}
   <label class="check"><input type="checkbox" name="active" value="1" {{ "checked" if vals.get('active') else "" }}>
     Active (students can use this subject)</label>

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     curriculum_context TEXT,
     tutor_model        TEXT    NOT NULL DEFAULT 'anthropic/claude-sonnet-5',
     tools_enabled      INTEGER NOT NULL DEFAULT 0,   -- 1 = tutor may use code/compute tools
+    multi_chat_enabled INTEGER NOT NULL DEFAULT 0,   -- 1 = student may keep several chats (see conversations)
     framing_supplement TEXT,                          -- optional per-subject worldview/framing note
     active             INTEGER NOT NULL DEFAULT 1,
     created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -45,12 +46,17 @@ CREATE TABLE IF NOT EXISTS conversations (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
-    is_test     INTEGER NOT NULL DEFAULT 0,   -- 1 = admin chat-test thread, kept apart from the real one
-    started_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    -- One real thread AND one test thread per (student, subject); the admin chat test
-    -- gets its own conversation so it never mixes with or deletes real history.
-    UNIQUE (student_id, subject_id, is_test)
+    is_test     INTEGER NOT NULL DEFAULT 0,   -- 1 = admin chat-test thread, kept apart from the real ones
+    title       TEXT,                         -- student-chosen chat name; NULL = date-based fallback
+    archived    INTEGER NOT NULL DEFAULT 0,   -- 1 = hidden from the student's picker (still admin-visible)
+    started_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- A subject with multi_chat_enabled may hold MANY real threads per (student, subject);
+-- single-chat subjects keep one via get_or_create_conversation. Only the admin chat-test
+-- thread stays unique per (student, subject) — enforced by idx_conversations_one_test,
+-- created in init_db AFTER migrations (it references is_test, which a legacy DB gains
+-- only via _migrate_conversations_is_test, so it can't be created in this script).
 
 CREATE TABLE IF NOT EXISTS messages (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,11 +123,22 @@ def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
     _migrate_conversations_is_test()
+    _migrate_conversations_multi_chat()
+    _migrate_add_column("conversations", "title", "TEXT")
+    _migrate_add_column("conversations", "archived", "INTEGER NOT NULL DEFAULT 0")
+    _migrate_add_column("subjects", "multi_chat_enabled", "INTEGER NOT NULL DEFAULT 0")
     _migrate_add_column("subjects", "tools_enabled", "INTEGER NOT NULL DEFAULT 0")
     _migrate_add_column("subjects", "framing_supplement", "TEXT")
     _migrate_add_column("students", "birth_year", "INTEGER")
     _migrate_add_column("students", "birth_month", "INTEGER")
     _migrate_students_birthdate_backfill()
+    with db() as conn:
+        # One admin chat-test thread per (student, subject) — the real-thread UNIQUE is
+        # gone (multi-chat), so test-thread uniqueness lives in this partial index. Created
+        # here (not in SCHEMA) because it references is_test, which a legacy DB gains only
+        # via _migrate_conversations_is_test above.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_one_test "
+                     "ON conversations(student_id, subject_id) WHERE is_test = 1")
     _stamp_schema_version()
 
 
@@ -195,10 +212,12 @@ def _migrate_conversations_is_test() -> None:
     stays valid); foreign keys are disabled only for the structural swap."""
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000;")  # a hot backup may hold the DB briefly
     try:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
         if not cols or "is_test" in cols:
             return  # no table yet (fresh DB handled by SCHEMA), or already migrated
+        seq = _autoincrement_seq(conn)
         conn.isolation_level = None  # take manual control of the transaction
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("BEGIN")
@@ -226,10 +245,108 @@ def _migrate_conversations_is_test() -> None:
         # The index lived on the old table; recreate it on the rebuilt one.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_student_subject "
                      "ON conversations(student_id, subject_id)")
+        _restore_autoincrement_seq(conn, seq)
         violations = conn.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
             conn.execute("ROLLBACK")
             raise RuntimeError(f"conversations migration left dangling rows: {violations}")
+        conn.execute("COMMIT")
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.close()
+
+
+def _autoincrement_seq(conn: sqlite3.Connection):
+    """conversations' AUTOINCREMENT high-water mark, or None if it has never issued an
+    id. Captured before a table rebuild: DROP TABLE deletes the sqlite_sequence row, and
+    the copy-insert recreates it at only max(id) — so if the newest conversation had
+    been deleted, the next insert would REUSE its id, and a stale admin bookmark for
+    /admin/conversations/{id} could land on a different student's chat."""
+    has_seq = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone()
+    if not has_seq:
+        return None
+    row = conn.execute(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'conversations'").fetchone()
+    return row[0] if row else None
+
+
+def _restore_autoincrement_seq(conn: sqlite3.Connection, seq) -> None:
+    """Carry the captured high-water mark over to the rebuilt table (never lowering
+    it), inside the rebuild's transaction. No-op when there was nothing to carry."""
+    if seq is None:
+        return
+    if conn.execute("SELECT 1 FROM sqlite_sequence WHERE name = 'conversations'").fetchone():
+        conn.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) "
+                     "WHERE name = 'conversations'", (seq,))
+    else:  # the rebuilt table copied zero rows, so the insert never recreated the row
+        conn.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('conversations', ?)",
+                     (seq,))
+
+
+def _migrate_conversations_multi_chat() -> None:
+    """Drop the table-level UNIQUE (student_id, subject_id, is_test) on a DB created
+    before subjects could hold multiple real chats, adding the title/archived columns in
+    the same rebuild. Test-thread uniqueness moves to the partial index
+    idx_conversations_one_test (created in init_db, after this runs). A fresh DB already
+    has the new shape via SCHEMA — detected by the table SQL carrying no UNIQUE — so this
+    no-ops there. Runs AFTER _migrate_conversations_is_test, so is_test always exists
+    here. Same rebuild recipe as that migration (ids preserved → messages' FK stays
+    valid); foreign keys are disabled only for the structural swap."""
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000;")  # a hot backup may hold the DB briefly
+    try:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
+        # Belt & braces: a table that already has `title` is the multi-chat shape — never
+        # rebuild it (the copy below carries only the legacy columns, so a false-positive
+        # re-run would wipe every chat's title/archived flag).
+        if not cols or "title" in cols:
+            return  # no table yet (fresh DB handled by SCHEMA), or already migrated
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'conversations'"
+        ).fetchone()
+        if row is None or "UNIQUE" not in (row["sql"] or ""):
+            return
+        seq = _autoincrement_seq(conn)
+        conn.isolation_level = None  # take manual control of the transaction
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN")
+        # Defensive: clear any half-built table from an externally-interrupted run so a
+        # retry starts clean (this function's own failures roll back atomically).
+        conn.execute("DROP TABLE IF EXISTS conversations_new")
+        conn.execute(
+            """
+            CREATE TABLE conversations_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                is_test     INTEGER NOT NULL DEFAULT 0,
+                title       TEXT,
+                archived    INTEGER NOT NULL DEFAULT 0,
+                started_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO conversations_new (id, student_id, subject_id, is_test, started_at) "
+            "SELECT id, student_id, subject_id, is_test, started_at FROM conversations"
+        )
+        conn.execute("DROP TABLE conversations")
+        conn.execute("ALTER TABLE conversations_new RENAME TO conversations")
+        # Indexes lived on the old table; recreate them on the rebuilt one. (init_db also
+        # creates idx_conversations_one_test, but a mid-migration crash must not leave the
+        # table without its test-thread uniqueness, so it's part of this transaction too.)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_student_subject "
+                     "ON conversations(student_id, subject_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_one_test "
+                     "ON conversations(student_id, subject_id) WHERE is_test = 1")
+        _restore_autoincrement_seq(conn, seq)
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            conn.execute("ROLLBACK")
+            raise RuntimeError(
+                f"conversations multi-chat migration left dangling rows: {violations}")
         conn.execute("COMMIT")
         conn.execute("PRAGMA foreign_keys = ON")
     finally:

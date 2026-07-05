@@ -452,6 +452,15 @@ document.body.addEventListener("submit", function (e) {
   streamChat(form);
 });
 
+// While a reply is streaming, hold the chat-bar actions (New chat / Rename / Archive)
+// — their navigation would abort the in-flight turn before it's persisted.
+document.body.addEventListener("submit", function (e) {
+  const form = e.target;
+  if (chatInFlight && form && form.closest && form.closest(".chat-bar")) {
+    e.preventDefault();
+  }
+});
+
 // "Load earlier messages" (student chat + admin transcript). Delegated so it also
 // catches the fresh loader that each fetched page brings with it.
 document.body.addEventListener("click", function (e) {
@@ -512,6 +521,22 @@ function setupBirthdateAge() {
   });
 }
 
+// --- student: chat switcher ----------------------------------------------------
+// Picking a chat in the multi-chat switcher <select> navigates to it (the form is a
+// plain GET of /chat/{subject}?chat=N). <noscript> renders an explicit "Open" button,
+// so this stays progressive enhancement under the strict CSP (no inline handlers).
+// While a reply is streaming, switching is refused (selection snaps back) — navigating
+// away would abort the turn before it's persisted, losing the answer.
+function setupChatSwitcher() {
+  document.querySelectorAll("select[data-autosubmit]").forEach(function (sel) {
+    const current = sel.value;
+    sel.addEventListener("change", function () {
+      if (chatInFlight) { sel.value = current; return; }
+      if (sel.form) sel.form.submit();
+    });
+  });
+}
+
 // "New conversation" on the admin chat-test page: clear the transcript and wipe the
 // server-side test thread so the next message starts a fresh conversation.
 function setupTestChat() {
@@ -542,4 +567,5 @@ window.addEventListener("DOMContentLoaded", function () {
   setupSubjectPresets();
   setupTestChat();
   setupBirthdateAge();
+  setupChatSwitcher();
 });

@@ -3,8 +3,9 @@
 {% block content %}
 {% include "admin/_nav.html" %}
 <p><a href="/admin/conversations">← Conversations</a></p>
-<h1>{{ conv.subject_name }}
-  <small class="muted">· {{ conv.student_name }}{% set a = conv | age_of %}{% if a is not none %} ({{ a }}){% endif %}</small></h1>
+<h1>{{ conv.subject_name }}{% if conv.title %} · “{{ conv.title }}”{% endif %}
+  <small class="muted">· {{ conv.student_name }}{% set a = conv | age_of %}{% if a is not none %} ({{ a }}){% endif %}</small>
+  {% if conv.archived %} <span class="badge">archived</span>{% endif %}</h1>
 {% if not conv.subject_active %}<p class="banner">This subject is currently inactive.</p>{% endif %}
 
 <div class="transcript">
@@ -15,4 +16,9 @@
   <p>No messages in this conversation yet.</p>
   {% endfor %}
 </div>
+
+{% if not conv.is_test %}
+<p class="muted"><a class="danger" href="/admin/conversations/{{ conversation_id }}/delete">Delete this chat…</a>
+  <small>Removes just this one chat thread. To wipe the whole subject, use “Clear history” on the student’s page.</small></p>
+{% endif %}
 {% endblock %}

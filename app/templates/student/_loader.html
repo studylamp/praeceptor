@@ -1,5 +1,7 @@
 {# "Load earlier messages" control at the top of the message list. The href is the
    no-JS fallback (?full=1 renders the whole thread server-side); app.js intercepts the
-   click and fetches `data-history` to prepend just the previous page. #}
-<a class="load-earlier" href="/chat/{{ subject.id }}?full=1"
-   data-history="/chat/{{ subject.id }}/history?before={{ oldest_id }}">Load earlier messages</a>
+   click and fetches `data-history` to prepend just the previous page. `chat_param`
+   (multi-chat subjects) pins both URLs to the open chat; None on single-chat subjects
+   leaves them unchanged. #}
+<a class="load-earlier" href="/chat/{{ subject.id }}?full=1{% if chat_param %}&amp;chat={{ chat_param }}{% endif %}"
+   data-history="/chat/{{ subject.id }}/history?before={{ oldest_id }}{% if chat_param %}&amp;chat={{ chat_param }}{% endif %}">Load earlier messages</a>

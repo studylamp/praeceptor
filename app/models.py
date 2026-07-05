@@ -18,7 +18,7 @@ _STUDENT_COLS = frozenset(
 _SUBJECT_COLS = frozenset(
     {"name", "grade_level", "curriculum_name", "style", "answer_policy",
      "gate_scope", "curriculum_context", "tutor_model", "tools_enabled",
-     "framing_supplement", "active"}
+     "multi_chat_enabled", "framing_supplement", "active"}
 )
 
 
@@ -111,7 +111,7 @@ def update_subject(subject_id: int, **fields) -> None:
 
 
 def delete_subject(subject_id: int) -> None:
-    """Remove a subject and (via cascade) its conversation + messages. Destructive —
+    """Remove a subject and (via cascade) its conversations + messages. Destructive —
     prefer deactivating (active=0), which preserves the logs; the admin UI confirms."""
     with db() as conn:
         conn.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
@@ -125,7 +125,7 @@ def list_conversations(student_id: Optional[int] = None):
     threads (is_test=1) are excluded — they have their own review path (list_test_conversations)
     and share student/subject names with the real threads, which is confusing here."""
     sql = """
-        SELECT c.id, c.student_id, c.subject_id, c.started_at,
+        SELECT c.id, c.student_id, c.subject_id, c.title, c.archived, c.started_at,
                st.name AS student_name, su.name AS subject_name, su.active AS subject_active,
                COUNT(m.id) AS message_count,
                SUM(CASE WHEN m.blocked = 1 THEN 1 ELSE 0 END) AS blocked_count,
@@ -150,7 +150,8 @@ def get_conversation(conversation_id: int):
     with db() as conn:
         return conn.execute(
             """
-            SELECT c.id, c.student_id, c.subject_id, c.started_at,
+            SELECT c.id, c.student_id, c.subject_id, c.is_test, c.title, c.archived,
+                   c.started_at,
                    st.name AS student_name, st.birth_year, st.birth_month,
                    su.name AS subject_name, su.active AS subject_active
             FROM conversations c
@@ -163,12 +164,22 @@ def get_conversation(conversation_id: int):
 
 
 def get_or_create_conversation(student_id: int, subject_id: int, is_test: bool = False) -> int:
-    """One continuing thread per (student, subject) for cross-day continuity. The admin
-    chat test passes is_test=True to get a SEPARATE thread that never mixes with the
-    student's real history (and can be wiped on its own — see clear_test_conversations)."""
+    """The student's CURRENT thread for a subject, created on first use. A multi-chat
+    subject can hold several real threads; this returns the most recently ACTIVE one
+    (un-archived preferred), which is both the single-chat behavior (one thread ever
+    exists) and the landing chat when a parent turns multi-chat back off. The admin
+    chat test passes is_test=True to get its SEPARATE, unique-per-subject thread that
+    never mixes with the student's real history (see clear_test_conversations)."""
     with db() as conn:
         row = conn.execute(
-            "SELECT id FROM conversations WHERE student_id = ? AND subject_id = ? AND is_test = ?",
+            """
+            SELECT c.id FROM conversations c
+            LEFT JOIN messages m ON m.conversation_id = c.id
+            WHERE c.student_id = ? AND c.subject_id = ? AND c.is_test = ?
+            GROUP BY c.id
+            ORDER BY c.archived ASC, COALESCE(MAX(m.created_at), c.started_at) DESC, c.id DESC
+            LIMIT 1
+            """,
             (student_id, subject_id, int(is_test)),
         ).fetchone()
         if row:
@@ -178,6 +189,84 @@ def get_or_create_conversation(student_id: int, subject_id: int, is_test: bool =
             (student_id, subject_id, int(is_test)),
         )
         return int(cur.lastrowid)
+
+
+def list_subject_chats(student_id: int, subject_id: int):
+    """All REAL chats for one (student, subject) with roll-up counts, most recently
+    active first and un-archived before archived — the student's chat switcher, whose
+    first row matches what get_or_create_conversation would pick. Counts are display
+    hints and include blocked turns (they're still activity)."""
+    with db() as conn:
+        return conn.execute(
+            """
+            SELECT c.id, c.title, c.archived, c.started_at,
+                   COUNT(m.id) AS message_count,
+                   MAX(m.created_at) AS last_at
+            FROM conversations c
+            LEFT JOIN messages m ON m.conversation_id = c.id
+            WHERE c.student_id = ? AND c.subject_id = ? AND c.is_test = 0
+            GROUP BY c.id
+            ORDER BY c.archived ASC, COALESCE(MAX(m.created_at), c.started_at) DESC, c.id DESC
+            """,
+            (student_id, subject_id),
+        ).fetchall()
+
+
+def create_chat(student_id: int, subject_id: int, title: Optional[str]) -> int:
+    """Start a new REAL chat for a multi-chat subject. If an UNNAMED, un-archived,
+    EMPTY chat already exists (e.g. "New chat" tapped twice, or the auto-created first
+    thread was never used), it's reused — titled and its started_at refreshed so the
+    date-based fallback name stays honest — instead of stacking blank threads. A chat
+    the student explicitly TITLED or ARCHIVED is never reused, even empty: silently
+    overwriting a student-typed title would erase it from the parent's review, and
+    un-archiving would undo a deliberate action. Callers that can run while a turn is
+    streaming must hold the per-student lock — an in-flight first exchange persists
+    only at finalize, so its chat still LOOKS empty until then (see routers.student)."""
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT c.id FROM conversations c
+            WHERE c.student_id = ? AND c.subject_id = ? AND c.is_test = 0
+              AND c.title IS NULL AND c.archived = 0
+              AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+            ORDER BY c.id DESC LIMIT 1
+            """,
+            (student_id, subject_id),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE conversations SET title = ?, started_at = datetime('now') "
+                "WHERE id = ?",
+                (title, row["id"]),
+            )
+            return int(row["id"])
+        cur = conn.execute(
+            "INSERT INTO conversations (student_id, subject_id, is_test, title) "
+            "VALUES (?, ?, 0, ?)",
+            (student_id, subject_id, title),
+        )
+        return int(cur.lastrowid)
+
+
+def rename_conversation(conversation_id: int, title: Optional[str]) -> None:
+    with db() as conn:
+        conn.execute("UPDATE conversations SET title = ? WHERE id = ?",
+                     (title, conversation_id))
+
+
+def set_conversation_archived(conversation_id: int, archived: bool) -> None:
+    """Archive = hidden from the student's picker only; the chat stays fully visible
+    (and continuable), and the admin console always sees it."""
+    with db() as conn:
+        conn.execute("UPDATE conversations SET archived = ? WHERE id = ?",
+                     (int(archived), conversation_id))
+
+
+def delete_conversation(conversation_id: int) -> None:
+    """Remove ONE chat thread and (via cascade) its messages. Destructive — the admin
+    UI confirms first; students have no delete path (oversight is the point)."""
+    with db() as conn:
+        conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
 
 
 def list_test_conversations():
@@ -198,8 +287,8 @@ def list_test_conversations():
 
 
 def clear_subject_conversation(subject_id: int) -> None:
-    """Drop the student's REAL conversation thread for one subject (messages cascade),
-    giving a clean slate — e.g. when the student starts a new chapter. The subject and its
+    """Drop ALL of the student's REAL chats for one subject (messages cascade), giving a
+    clean slate — e.g. when the student starts a new chapter. The subject and its
     settings are kept; the next message reopens a fresh thread via get_or_create_conversation.
     The admin chat-test thread (is_test=1) is untouched — it has its own clear path."""
     with db() as conn:

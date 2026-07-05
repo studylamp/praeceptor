@@ -108,6 +108,40 @@ def _owned_subject(student, subject_id: int):
     return sub
 
 
+def _owned_chat(student, subject_id: int, conversation_id: int):
+    """The conversation row, only if it's this student's own REAL chat under this
+    subject (never the admin test thread); None otherwise."""
+    conv = models.get_conversation(conversation_id)
+    if (conv is None or conv["student_id"] != student["id"]
+            or conv["subject_id"] != subject_id or conv["is_test"]):
+        return None
+    return conv
+
+
+# Chat titles are student-typed free text shown in their own picker and the admin log;
+# collapse whitespace and bound the length (the input has the same maxlength).
+MAX_CHAT_TITLE = 60
+
+
+def _clean_title(raw: Optional[str]) -> Optional[str]:
+    t = " ".join((raw or "").split())
+    return t[:MAX_CHAT_TITLE] or None
+
+
+def _resolve_chat(student, sub, chat: Optional[int]):
+    """Pick the conversation the chat page/history should show. Multi-chat subjects
+    honor an explicit owned `?chat=` id and fall back to the current thread; single-chat
+    subjects ignore the param entirely. Returns (conv_id, chats) where `chats` is the
+    switcher list (empty for single-chat subjects)."""
+    multi = bool(sub["multi_chat_enabled"])
+    if multi and chat is not None and _owned_chat(student, sub["id"], chat) is not None:
+        conv_id = chat
+    else:
+        conv_id = models.get_or_create_conversation(student["id"], sub["id"])
+    chats = models.list_subject_chats(student["id"], sub["id"]) if multi else []
+    return conv_id, chats
+
+
 def _notice(request: Request, student_text: str, notice: str) -> HTMLResponse:
     """A 200 chat partial (student bubble + notice) so htmx always has something to
     swap in — raw 4xx responses are silently dropped and leave the kid with nothing."""
@@ -120,11 +154,12 @@ def _notice(request: Request, student_text: str, notice: str) -> HTMLResponse:
 
 @router.get("/chat/{subject_id}", response_class=HTMLResponse)
 def chat_page(request: Request, subject_id: int, full: bool = False,
-              student=Depends(auth.current_student)):
+              chat: Optional[int] = None, student=Depends(auth.current_student)):
     sub = _owned_subject(student, subject_id)
     if sub is None:
         return RedirectResponse("/subjects", status_code=303)
-    conv_id = models.get_or_create_conversation(student["id"], subject_id)
+    conv_id, chats = _resolve_chat(student, sub, chat)
+    current_chat = next((c for c in chats if c["id"] == conv_id), None)
     # Show the real dialogue: tutor replies + on-subject student turns (blocked
     # off-topic / other-subject / error turns were never answered → hidden). Windowed to
     # the most recent messages; a "Load earlier" link pages back (?full=1 is the no-JS
@@ -135,31 +170,108 @@ def chat_page(request: Request, subject_id: int, full: bool = False,
     return templates.TemplateResponse(
         request, "student/chat.html",
         {"student": student, "subject": sub, "history": history,
-         "has_more": has_more, "oldest_id": history[0]["id"] if history else None},
+         "has_more": has_more, "oldest_id": history[0]["id"] if history else None,
+         "multi": bool(sub["multi_chat_enabled"]), "chats": chats,
+         "current_chat": current_chat,
+         "chat_param": conv_id if sub["multi_chat_enabled"] else None},
     )
 
 
 @router.get("/chat/{subject_id}/history", response_class=HTMLResponse)
 def chat_history(request: Request, subject_id: int, before: int,
-                 student=Depends(auth.current_student)):
+                 chat: Optional[int] = None, student=Depends(auth.current_student)):
     """One page of older messages (before message id `before`), for the "Load earlier"
     link. Returns the same bubble partials the page uses, oldest-first, led by a fresh
     loader when still-older messages remain. Display only."""
     sub = _owned_subject(student, subject_id)
     if sub is None:
         return RedirectResponse("/subjects", status_code=303)
-    conv_id = models.get_or_create_conversation(student["id"], subject_id)
+    if chat is not None and sub["multi_chat_enabled"]:
+        if _owned_chat(student, subject_id, chat) is None:
+            # The chat vanished mid-session (e.g. the parent deleted it). Return an
+            # empty chunk — no rows, no fresh loader — rather than silently splicing
+            # ANOTHER conversation's older messages into the stale page.
+            return templates.TemplateResponse(
+                request, "student/_history_chunk.html",
+                {"subject": sub, "history": [], "has_more": False,
+                 "oldest_id": None, "chat_param": None})
+        conv_id = chat
+    else:
+        conv_id = models.get_or_create_conversation(student["id"], subject_id)
     history, has_more = models.get_messages_page(
         conv_id, before_id=before, limit=settings.chat_history_step, visible_only=True)
     return templates.TemplateResponse(
         request, "student/_history_chunk.html",
         {"subject": sub, "history": history,
-         "has_more": has_more, "oldest_id": history[0]["id"] if history else None},
+         "has_more": has_more, "oldest_id": history[0]["id"] if history else None,
+         "chat_param": conv_id if sub["multi_chat_enabled"] else None},
     )
+
+
+@router.post("/chat/{subject_id}/new")
+async def chat_new(request: Request, subject_id: int, title: str = Form(""),
+                   student=Depends(auth.current_student)):
+    """Start a new chat (multi-chat subjects only). A blank name is fine — the picker
+    falls back to a date-based label, and the student can rename later. Takes the same
+    per-student lock as sending: an in-flight streamed turn persists only when it
+    finishes, so until then its chat still LOOKS empty and models.create_chat would
+    wrongly reuse it — the lock makes "New chat" wait the turn out."""
+    sub = _owned_subject(student, subject_id)
+    if sub is None:
+        return RedirectResponse("/subjects", status_code=303)
+    if not sub["multi_chat_enabled"]:
+        return RedirectResponse(f"/chat/{subject_id}", status_code=303)
+    lock = _locks.get(student["id"]) or _locks.setdefault(student["id"], asyncio.Lock())
+    async with lock:
+        conv_id = await run_in_threadpool(models.create_chat, student["id"], subject_id,
+                                          _clean_title(title))
+    return RedirectResponse(f"/chat/{subject_id}?chat={conv_id}", status_code=303)
+
+
+@router.post("/chat/{subject_id}/chats/{conversation_id}/rename")
+def chat_rename(request: Request, subject_id: int, conversation_id: int,
+                title: str = Form(""), student=Depends(auth.current_student)):
+    sub = _owned_subject(student, subject_id)
+    if sub is None:
+        return RedirectResponse("/subjects", status_code=303)
+    if not sub["multi_chat_enabled"] or _owned_chat(student, subject_id, conversation_id) is None:
+        return RedirectResponse(f"/chat/{subject_id}", status_code=303)
+    cleaned = _clean_title(title)
+    if cleaned:
+        models.rename_conversation(conversation_id, cleaned)
+    # Whitespace-only input skips the rename but still returns to the SAME chat —
+    # bouncing to the default thread would silently switch the student's context.
+    return RedirectResponse(f"/chat/{subject_id}?chat={conversation_id}", status_code=303)
+
+
+@router.post("/chat/{subject_id}/chats/{conversation_id}/archive")
+def chat_archive(request: Request, subject_id: int, conversation_id: int,
+                 student=Depends(auth.current_student)):
+    """Toggle a chat's archived flag. Archiving only hides it from the picker's main
+    list (it stays continuable and admin-visible); archiving the open chat lands the
+    student back on their current thread."""
+    sub = _owned_subject(student, subject_id)
+    if sub is None:
+        return RedirectResponse("/subjects", status_code=303)
+    conv = _owned_chat(student, subject_id, conversation_id)
+    if not sub["multi_chat_enabled"] or conv is None:
+        return RedirectResponse(f"/chat/{subject_id}", status_code=303)
+    now_archived = not conv["archived"]
+    models.set_conversation_archived(conversation_id, now_archived)
+    if not now_archived:
+        return RedirectResponse(f"/chat/{subject_id}?chat={conversation_id}", status_code=303)
+    # Archiving the last visible chat would otherwise drop the student straight back
+    # into it (the current-thread pick falls through to archived chats when nothing
+    # else exists) — start a fresh unnamed chat so Archive visibly puts the old one away.
+    chats = models.list_subject_chats(student["id"], subject_id)
+    if not any(c["archived"] == 0 for c in chats):
+        models.create_chat(student["id"], subject_id, None)
+    return RedirectResponse(f"/chat/{subject_id}", status_code=303)
 
 
 @router.post("/chat/{subject_id}/send", response_class=HTMLResponse)
 async def chat_send(request: Request, subject_id: int, message: str = Form(...),
+                    conversation_id: Optional[int] = Form(None),
                     student=Depends(auth.current_student)):
     text = message.strip()
     sub = _owned_subject(student, subject_id)
@@ -170,7 +282,10 @@ async def chat_send(request: Request, subject_id: int, message: str = Form(...),
 
     lock = _locks.get(student["id"]) or _locks.setdefault(student["id"], asyncio.Lock())
     async with lock:
-        result = await run_in_threadpool(pipeline.process_message, student["id"], subject_id, text)
+        # conversation_id (the multi-chat page's hidden field) is ownership-checked in
+        # pipeline.prepare; None = the subject's current thread (single-chat behavior).
+        result = await run_in_threadpool(pipeline.process_message, student["id"], subject_id,
+                                         text, conversation_id)
 
     return templates.TemplateResponse(
         request, "student/_exchange.html",
@@ -180,6 +295,7 @@ async def chat_send(request: Request, subject_id: int, message: str = Form(...),
 
 @router.post("/chat/{subject_id}/stream")
 async def chat_send_stream(request: Request, subject_id: int, message: str = Form(...),
+                           conversation_id: Optional[int] = Form(None),
                            student=Depends(auth.current_student)):
     """Streaming counterpart of /send. Emits Server-Sent Events: `delta` per token
     chunk while the tutor writes, then `done` (with the rendered markdown+KaTeX HTML
@@ -209,7 +325,9 @@ async def chat_send_stream(request: Request, subject_id: int, message: str = For
                     return
 
                 # Caps + gate + branch (sync/DB/Haiku work → threadpool, off the loop).
-                prep = await run_in_threadpool(pipeline.prepare, sid, subject_id, text)
+                # conversation_id (multi-chat hidden field) is ownership-checked inside.
+                prep = await run_in_threadpool(pipeline.prepare, sid, subject_id, text,
+                                               conversation_id)
                 if prep.result is not None:
                     yield _sse("notice", {"html": _render_response(prep.result, _switch_id_for(sid, prep.result))})
                     return

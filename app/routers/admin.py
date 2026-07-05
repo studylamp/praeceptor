@@ -352,6 +352,7 @@ def _subject_fields_from_form(form: dict) -> dict:
         "curriculum_context": _clean_str(form.get("curriculum_context")),
         "tutor_model": tutor_model,
         "tools_enabled": 1 if form.get("tools_enabled") else 0,
+        "multi_chat_enabled": 1 if form.get("multi_chat_enabled") else 0,
         "framing_supplement": _clean_str(form.get("framing_supplement")),
     }
 
@@ -455,11 +456,46 @@ def subject_clear_history_confirm(request: Request, subject_id: int,
         request, "admin/confirm_delete.html",
         {"title": f"Clear conversation history for “{subject['name']}”?",
          "warning": "This permanently deletes the student’s chat history for this subject "
-                    "so they start with a clean slate — useful at a new chapter or unit. "
-                    "The subject and all its settings are kept. This cannot be undone.",
+                    "— every chat, if it has several — so they start with a clean slate; "
+                    "useful at a new chapter or unit. To remove just one chat, open it "
+                    "under Conversations and delete it there. The subject and all its "
+                    "settings are kept. This cannot be undone.",
          "confirm_label": "Yes, clear history",
          "action": f"/admin/subjects/{subject_id}/clear-history",
          "cancel": f"/admin/students/{subject['student_id']}"})
+
+
+@router.get("/conversations/{conversation_id}/delete", response_class=HTMLResponse)
+def conversation_delete_confirm(request: Request, conversation_id: int,
+                                _: bool = Depends(auth.current_admin)):
+    conv = models.get_conversation(conversation_id)
+    if conv is None:
+        return RedirectResponse("/admin/conversations", status_code=303)
+    if conv["is_test"]:
+        # Test threads have their own wipe path (chat test → New conversation); the
+        # transcript page hides delete for them, and the handlers enforce it too.
+        return RedirectResponse(f"/admin/conversations/{conversation_id}", status_code=303)
+    label = f"“{conv['title']}”" if conv["title"] else "this chat"
+    return templates.TemplateResponse(
+        request, "admin/confirm_delete.html",
+        {"title": f"Delete {label} ({conv['student_name']} · {conv['subject_name']})?",
+         "warning": "This permanently deletes this ONE chat thread and its messages. "
+                    "Other chats in the subject are kept. This cannot be undone.",
+         "confirm_label": "Yes, delete this chat",
+         "action": f"/admin/conversations/{conversation_id}/delete",
+         "cancel": f"/admin/conversations/{conversation_id}"})
+
+
+@router.post("/conversations/{conversation_id}/delete")
+def conversation_delete(request: Request, conversation_id: int,
+                        _: bool = Depends(auth.current_admin)):
+    conv = models.get_conversation(conversation_id)
+    if conv is not None and conv["is_test"]:
+        # Guarded in the handler, not just the template: test threads are wiped via
+        # the chat test's own "New conversation", never deleted one-by-one here.
+        return RedirectResponse(f"/admin/conversations/{conversation_id}", status_code=303)
+    models.delete_conversation(conversation_id)
+    return RedirectResponse("/admin/conversations", status_code=303)
 
 
 @router.post("/subjects/{subject_id}/clear-history")
