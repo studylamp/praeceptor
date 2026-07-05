@@ -721,7 +721,7 @@ async def test_chat_stream(request: Request, subject_id: int = Form(...),
                     yield _sse("delta", {"text": ev})
                 elif isinstance(ev, dict):
                     if "status" in ev:
-                        yield _sse("status", {"tool": ev.get("tool")})
+                        yield _sse("status", tutor_runtime.status_payload(ev))
                     else:
                         meta = ev
         except model_client.ModelError:

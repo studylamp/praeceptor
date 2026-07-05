@@ -27,6 +27,12 @@ async def _tool_executor(name: str, args: dict) -> dict:
     return await run_in_threadpool(tools.run_tool, name, args)
 
 
+def status_payload(ev: dict) -> dict:
+    """Wire payload for an SSE `status` event, built from a model_client status dict —
+    the single copy of the shape both chat routes send (app.js statusLabel reads it)."""
+    return {"phase": ev["status"], "tool": ev.get("tool"), "round": ev.get("round")}
+
+
 def tutor_stream(model: str, system: str, history: list[dict], *, use_tools: bool):
     """Return the appropriate async generator. Both yield the same shapes: str text
     deltas, then a final meta dict; the tools path may also yield `{"status":...}`."""

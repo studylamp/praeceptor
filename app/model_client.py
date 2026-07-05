@@ -403,8 +403,11 @@ async def run_tutor_tools_stream(
     tools: list[dict], tool_executor: Callable[[str, dict], Awaitable[dict]],
 ):
     """Agentic tutor turn WITH tools. Yields the same shapes as `run_tutor_stream`
-    (str text deltas, then a final meta dict), plus `{"status": ..., "tool": ...}`
-    dicts while a tool runs so the UI can show activity.
+    (str text deltas, then a final meta dict), plus status dicts so the UI can show
+    per-round activity: `{"status": "model", "round": N}` as each model round starts
+    (rounds resolve non-streaming, so this is the only signal while one generates),
+    `{"status": "tool", "tool": name}` while a tool runs, and `{"status": "wrap"}`
+    before the forced tools-off wrap-up round.
 
     Tool rounds are resolved with non-streaming calls (assembling streamed tool-call
     arguments across providers is fragile); each round's text is emitted in chunks so
@@ -454,6 +457,9 @@ async def run_tutor_tools_stream(
         return msg
 
     for round_i in range(max_rounds):
+        # A round is one non-streaming call — nothing else reaches the UI until it
+        # completes, so announce the round to keep the client's indicator alive.
+        yield {"status": "model", "round": round_i + 1}
         msg = await _complete(use_tools=True, first=(round_i == 0))
         if msg is None:
             partial = bool(reply_parts)
@@ -502,6 +508,7 @@ async def run_tutor_tools_stream(
         # Rounds exhausted with tool calls still pending — force a worded wrap-up with
         # tools disabled so we never end on an unanswered tool round.
         finish_reason = "max_tool_rounds"
+        yield {"status": "wrap"}
         msg = await _complete(use_tools=False, first=False)
         if msg is not None:
             content = (getattr(msg, "content", None) or "")

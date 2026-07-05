@@ -4,13 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Praeceptor{% endblock %}</title>
-  <link rel="stylesheet" href="/static/katex/katex.min.css">
-  <link rel="stylesheet" href="/static/style.css">
+  {# ?v= busts browser heuristic caching (StaticFiles sends no Cache-Control): the
+     version string changes per build, so a deploy can't leave devices on stale assets. #}
+  <link rel="stylesheet" href="/static/katex/katex.min.css?v={{ app_version }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
   {# Synchronous (not deferred): set the color theme before first paint to avoid a flash. #}
-  <script src="/static/theme.js"></script>
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/katex/katex.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/theme.js?v={{ app_version }}"></script>
+  <script src="/static/htmx.min.js?v={{ app_version }}" defer></script>
+  <script src="/static/katex/katex.min.js?v={{ app_version }}" defer></script>
+  <script src="/static/app.js?v={{ app_version }}" defer></script>
 </head>
 <body>
   <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Color theme">◐ Auto</button>

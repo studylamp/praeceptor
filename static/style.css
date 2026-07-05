@@ -132,7 +132,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .bubble.tutor { align-self: flex-start; background: var(--surface-2); }
 .bubble.notice { align-self: center; background: var(--notice-bg); color: var(--notice); font-style: italic; max-width: 90%; }
 
-/* Streaming status line (dots mode): "Calculating (tool) ⋯" / "Writing answer · N words ⋯". */
+/* Streaming status line (dots mode): "Thinking · 12s ⋯" / "Calculating (tool) · 3s ⋯"
+   / "Writing answer · N words ⋯". */
 .writing { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; }
 .writing-count { font-variant-numeric: tabular-nums; }
 

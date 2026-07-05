@@ -120,6 +120,7 @@ function wordCount(text) {
 
 // A muted inline "<label> ⋯" streaming indicator (label text + blinking dots).
 function showIndicator(ph, labelText) {
+  stopStatusTimer(); // a new indicator replaces any ticking status
   ph.text.textContent = "";
   const wrap = document.createElement("span");
   wrap.className = "writing";
@@ -129,20 +130,58 @@ function showIndicator(ph, labelText) {
   return wrap;
 }
 
-// Tool activity (tools-enabled subjects): "Calculating (python) ⋯" (or "Working ⋯").
-function showStatus(ph, tool) {
-  showIndicator(ph, tool ? "Calculating (" + tool + ") " : "Working ");
+// Insert a live count span between an indicator's label and its dots; returns it.
+function addIndicatorCount(wrap) {
+  const count = document.createElement("span");
+  count.className = "writing-count";
+  wrap.insertBefore(count, wrap.lastChild);
+  wrap.insertBefore(document.createTextNode(" "), wrap.lastChild);
+  return count;
+}
+
+// --- per-round status (tools-enabled subjects) ---------------------------------
+// Tool rounds resolve non-streaming server-side, so nothing arrives between status
+// events. Each status shows a caption for the current phase plus an elapsed-seconds
+// ticker updated client-side, so the indicator stays visibly alive during a round.
+
+// Ticker for the current status indicator (one stream at a time). Stopped in exactly
+// two places: showIndicator (any replacement — which is also what keeps back-to-back
+// status events from orphaning the previous interval) and streamChat's finally (turn
+// end, which every path funnels through). Add no other call sites.
+let statusTimer = null;
+
+function stopStatusTimer() {
+  if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+}
+
+function fmtElapsed(s) {
+  return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s";
+}
+
+// Caption for a status event ({phase: "model"|"tool"|"wrap", tool, round}). "tool"
+// events always carry the tool name, so keying that caption off its presence also
+// covers a legacy {tool}-only payload (pre-`phase` server during a rollback).
+function statusLabel(data) {
+  if (data.tool) return "Calculating (" + data.tool + ") ";
+  if (data.phase === "wrap") return "Wrapping up ";
+  const round = data.round || 0;
+  return round > 1 ? "Thinking (step " + round + ") " : "Thinking ";
+}
+
+// "Thinking · 12s ⋯" / "Calculating (python) · 3s ⋯" — caption + live elapsed time.
+function showStatus(ph, data) {
+  const count = addIndicatorCount(showIndicator(ph, statusLabel(data)));
+  count.textContent = "· 0s"; // seed so the caption is complete before the first tick
+  const t0 = Date.now();
+  statusTimer = setInterval(function () {
+    count.textContent = "· " + fmtElapsed(Math.round((Date.now() - t0) / 1000));
+  }, 1000);
 }
 
 // The "Writing answer · N words ⋯" indicator with a live word count. Returns the count
 // element so the caller can update it as more text streams in.
 function showWriting(ph) {
-  const wrap = showIndicator(ph, "Writing answer · ");
-  const count = document.createElement("span");
-  count.className = "writing-count";
-  wrap.insertBefore(count, wrap.lastChild); // between the label and the dots
-  wrap.insertBefore(document.createTextNode(" "), wrap.lastChild);
-  return count;
+  return addIndicatorCount(showIndicator(ph, "Writing answer · "));
 }
 
 // Turn the placeholder into a friendly error notice (network failure, etc.).
@@ -215,20 +254,21 @@ async function consumeStream(body, ph) {
         if (node) { ph.bubble.replaceWith(node); renderMath(node); }
         else ph.bubble.remove();
       } else if (ev.event === "status") {
-        // Tool activity (tools-enabled subjects). Raw-stream mode: show the caption in
-        // place of the dots until the first answer token arrives (don't clobber streamed
-        // text). Dots mode: show "Calculating (tool) ⋯" and reset `writing` so the next
-        // answer delta rebuilds the "Writing answer" indicator (handles a model that
-        // calls a tool part-way through writing).
+        // Per-round activity (tools-enabled subjects): a model round starting or a tool
+        // running. Raw-stream mode: show the caption in place of the dots until the
+        // first answer token arrives (don't clobber streamed text). Dots mode: show the
+        // ticking status indicator and reset `writing` so the next answer delta rebuilds
+        // the "Writing answer" indicator (handles a model that calls a tool part-way
+        // through writing).
         if (SHOW_RAW_STREAM) {
-          if (!started) {
-            ph.text.textContent = ev.data.tool
-              ? "Calculating (" + ev.data.tool + ")…"
-              : "Working…";
+          // Keep the animated dots for model rounds; only an actual tool run swaps
+          // them for a caption before the first token (raw mode has no ticker).
+          if (!started && ev.data.tool) {
+            ph.text.textContent = statusLabel(ev.data).trim() + "…";
           }
         } else {
           writing = null;
-          showStatus(ph, ev.data.tool);
+          showStatus(ph, ev.data);
         }
       } else if (ev.event === "debug") {
         debug = ev.data; // admin chat-test diagnostics; student stream never emits this
@@ -346,6 +386,7 @@ async function streamChat(form) {
   } catch (e) {
     failBubble(ph);
   } finally {
+    stopStatusTimer(); // never leave the elapsed ticker running after the turn ends
     unpin(sb); // remove the spacer and keep the question pinned (unless they scrolled)
     chatInFlight = false;
     if (btn) btn.disabled = false;

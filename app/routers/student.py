@@ -351,7 +351,7 @@ async def chat_send_stream(request: Request, subject_id: int, message: str = For
                             yield _sse("delta", {"text": ev})
                         elif isinstance(ev, dict):
                             if "status" in ev:
-                                yield _sse("status", {"tool": ev.get("tool")})
+                                yield _sse("status", tutor_runtime.status_payload(ev))
                             else:
                                 meta = ev
                                 tokens = ev.get("tokens", 0) or 0
