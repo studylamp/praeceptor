@@ -32,6 +32,10 @@ def _deny_paths() -> list[str]:
     # DB's exact file path in case DB_PATH points elsewhere. Deny the DB as a FILE, not
     # its directory, so a DB_PATH in a broad location can't over-block the work dir.
     paths = [str(BASE_DIR / ".env"), str(DATA_DIR), os.path.abspath(settings.db_path)]
+    # DB snapshots written by scripts/backup.py are byte-identical copies of the DB —
+    # deny the backups directory too, so a copy is no easier to read than the original.
+    # (In Docker it sits under DATA_DIR and is already covered; this matters bare-metal.)
+    paths.append(os.path.abspath(settings.backup_dir))
     # In the worker container the app↔worker socket lives on disk at SANDBOX_SERVER; deny it
     # too so tool code can't read/abuse the boundary socket (belt-and-suspenders with the
     # runner's socket-block speed bump). No-op in local mode where sandbox_server is empty.

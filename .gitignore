@@ -3,9 +3,13 @@
 .env.*
 !.env.example
 data/
+.backups/
 *.db
 *.db-wal
 *.db-shm
+# DB dumps / interrupted-backup temp files (scripts/backup.py) — full transcript copies
+*.sql
+*.part
 
 # Python
 __pycache__/

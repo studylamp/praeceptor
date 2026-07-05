@@ -43,8 +43,8 @@ services:
     volumes:
       # SQLite DB on a NAMED volume: Docker initializes it with the image's non-root
       # (uid 10001) ownership, so there is NO host-side chown. Persists across rebuilds.
-      # Back it up e.g.:
-      #   docker run --rm -v praeceptor_data:/d -v "$PWD":/b alpine tar czf /b/praeceptor-db.tgz -C /d .
+      # Back it up hot (no stop needed) with scripts/backup.py, or cold with the
+      # stop+tar recipe — see README "Backups".
       - data:/app/data
       # Shared, app↔sandbox-only volume carrying the worker's Unix-domain socket.
       - sandbox_ipc:/ipc

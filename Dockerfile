@@ -35,10 +35,17 @@ RUN uv sync --frozen --no-dev
 # Then the application code.
 COPY app ./app
 COPY static ./static
+# Operational scripts (e.g. the DB backup/restore tool) so they can be run in-container,
+# e.g. `docker compose exec praeceptor python scripts/backup.py`.
+COPY scripts ./scripts
 
 # SQLite lives on a host-mounted volume in production; declare its path in-image so the
 # app and the sandbox deny-list agree on it without relying on the compose env.
 ENV DB_PATH=/app/data/praeceptor.db
+# Backups (scripts/backup.py) go on the same volume: /app itself is root-owned, so the
+# repo-root default wouldn't be writable by appuser — and the volume persists snapshots
+# (including the pre-restore safety copies) across rebuilds.
+ENV BACKUP_DIR=/app/data/.backups
 
 # Isolation for the compute tools is provided by the separate, network-isolated `sandbox`
 # container (docker-compose sets SANDBOX_SERVER=/ipc/sandbox.sock and runs this same image

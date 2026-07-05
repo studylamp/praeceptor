@@ -34,6 +34,7 @@ praeceptor/ (repo root)
 ├─ pyproject.toml · uv.lock · .python-version   # uv-managed deps, pinned Python 3.12
 ├─ LICENSE · README.md · CONTRIBUTING.md · CLA.md
 ├─ data/                   # gitignored; praeceptor.db lives here
+├─ scripts/                # operational CLI tools (backup.py — hot DB backup/restore)
 ├─ app/
 │  ├─ main.py              # FastAPI app, middleware, router mounts, /healthz, lifespan
 │  ├─ config.py            # env + model defaults + validate_runtime boot guard

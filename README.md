@@ -238,10 +238,59 @@ students, subjects, models, caps — is configured in the admin console, not in 
 
 ### Backups
 
-The database is a Docker-managed named volume (`praeceptor_data` — the name is
-`<compose-project>_data`, usually `praeceptor_data`; `docker volume ls` confirms, and
-`docker volume inspect praeceptor_data` shows its host path). Snapshot it with the app
-stopped, so SQLite's WAL is flushed for a consistent copy:
+There are two ways to back up, depending on whether you can afford downtime.
+
+#### Hot backup — no downtime (recommended)
+
+[`scripts/backup.py`](scripts/backup.py) uses SQLite's **online-backup API** to take a
+*consistent* snapshot of the live database **without stopping the app** — WAL mode lets it
+read a coherent point-in-time view while the tutor keeps writing. (The raw volume `tar`
+below needs a stop only because it copies the loose `-db`/`-wal`/`-shm` files, which isn't
+atomic; SQLite's own snapshot has no such hazard.) Backups land in the gitignored
+`.backups/` directory by default (in Docker: `/app/data/.backups`, on the data volume).
+
+```bash
+uv run python scripts/backup.py                    # -> .backups/praeceptor-<timestamp>.db
+uv run python scripts/backup.py --sql              # a SQL text dump (.sql) instead of a binary .db
+uv run python scripts/backup.py --keep 10          # retain the 10 newest snapshots (default 5; 0 = all)
+uv run python scripts/backup.py --list             # list existing backups
+uv run python scripts/backup.py --restore          # restore the newest backup (stop the app first)
+uv run python scripts/backup.py --restore FILE     # restore a specific backup
+```
+
+Each default-location run keeps only the **5 newest** snapshots (`--keep N`, or `--keep 0`
+to retain all), deleting older ones so the backups directory doesn't grow without bound
+(binary and `--sql` snapshots share that budget; pre-restore safety copies are exempt).
+Passing `--out` opts a backup out of pruning entirely — that destination is yours to
+manage. In Docker (still no downtime) — snapshots live on the data volume; optionally copy
+them out to the host:
+
+```bash
+docker compose exec praeceptor python scripts/backup.py        # -> /app/data/.backups/praeceptor-<timestamp>.db
+mkdir -p .backups && docker cp praeceptor:/app/data/.backups/. ./.backups/
+```
+
+Cron the backup command for periodic snapshots — each run writes a new timestamped file and
+prunes to `--keep` (use `docker compose exec -T …` in cron; it has no TTY).
+
+**Restore** is the one operation to run with the app **stopped** (it overwrites the live
+DB); the script asks for confirmation (`-y` skips) and snapshots the current DB into the
+backups directory first, so a restore is undoable. On Docker, `docker compose run` gives
+you a throwaway container on the same data volume while the app itself stays stopped:
+
+```bash
+docker compose stop praeceptor
+docker compose run --rm --no-deps praeceptor python scripts/backup.py --restore   # newest; or --restore /app/data/.backups/<file>
+docker compose start praeceptor
+```
+
+#### Cold snapshot — the whole volume
+
+To capture the entire data volume as one archive (e.g. before a host migration), stop the
+app so SQLite's WAL is flushed for a consistent copy. The database is a Docker-managed
+named volume (`praeceptor_data` — the name is `<compose-project>_data`, usually
+`praeceptor_data`; `docker volume ls` confirms, and `docker volume inspect praeceptor_data`
+shows its host path):
 
 ```bash
 # Back up:
@@ -254,8 +303,6 @@ docker compose stop praeceptor
 docker run --rm -v praeceptor_data:/d -v "$PWD":/b alpine tar xzf /b/praeceptor-db.tgz -C /d
 docker compose start praeceptor
 ```
-
-Drop the first command in a cron job to keep periodic snapshots.
 
 ### The compute-tool sandbox
 

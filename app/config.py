@@ -28,6 +28,12 @@ class Settings:
     bind_addr: str = os.getenv("BIND_ADDR", "127.0.0.1")
     # SQLite file location (host-mounted volume in production).
     db_path: str = os.getenv("DB_PATH", str(DATA_DIR / "praeceptor.db"))
+    # Where scripts/backup.py writes DB snapshots (and its pre-restore safety copies).
+    # Default: <repo>/.backups (gitignored). The Docker image overrides this to a
+    # directory on the data volume, which the non-root user can write and which
+    # persists across rebuilds. The sandbox deny-list covers it too — snapshots are
+    # byte-identical copies of the DB.
+    backup_dir: str = os.getenv("BACKUP_DIR", str(BASE_DIR / ".backups"))
     # Model defaults (LiteLLM model strings); per-subject tutor model overrides this.
     gate_model: str = os.getenv("GATE_MODEL", "anthropic/claude-haiku-4-5")
     tutor_model_default: str = os.getenv(

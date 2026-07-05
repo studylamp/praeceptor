@@ -7,9 +7,12 @@
 .env.*
 !.env.example
 data/
+.backups/
 *.db
 *.db-wal
 *.db-shm
+*.sql
+*.part
 
 # Virtualenv (the image builds its own at /app/.venv).
 .venv/
