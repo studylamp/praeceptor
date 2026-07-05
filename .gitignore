@@ -21,6 +21,7 @@ venv/
 
 # Deploy artifacts (built on demand, never committed)
 *.tar.gz
+*.tgz
 
 # Editor / OS
 .vscode/

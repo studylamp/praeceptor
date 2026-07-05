@@ -35,6 +35,7 @@ praeceptor/ (repo root)
 ├─ LICENSE · README.md · CONTRIBUTING.md · CLA.md
 ├─ data/                   # gitignored; praeceptor.db lives here
 ├─ scripts/                # operational CLI tools (backup.py — hot DB backup/restore)
+├─ update.sh               # one-command deploy update: pull → build → cold volume snapshot → up → health wait
 ├─ app/
 │  ├─ main.py              # FastAPI app, middleware, router mounts, /healthz, lifespan
 │  ├─ config.py            # env + model defaults + validate_runtime boot guard

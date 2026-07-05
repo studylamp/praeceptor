@@ -219,7 +219,14 @@ create your children and their subjects; everything (students, subjects, models,
 framing) is configured there, no redeploy needed. Set a real PIN for each student — the
 dashboard warns about any student left on the weak default `1234`.
 
-Updating: `git pull && APP_VERSION=$(git describe --tags --always --dirty) docker compose up -d --build`
+Updating: run [`./update.sh`](update.sh) from the checkout. One command does the whole
+cycle: `git pull --ff-only`, build the new image *while the old app is still serving*,
+stop, cold-snapshot the data volume into `.backups/` (keeping the 5 newest), restart on
+the new image, and wait for a healthy `/healthz`. If a step fails while the app is
+stopped (e.g. the snapshot), the script brings the app back up on its way out. Use
+`--no-pull` to rebuild the current checkout as-is (e.g. a locally patched tree). The
+manual equivalent (no snapshot, health wait, or restart-on-failure):
+`git pull && APP_VERSION=$(git describe --tags --always --dirty) docker compose up -d --build`
 — your data persists on the named volume across rebuilds. (Dropping the `APP_VERSION=…`
 prefix still works; the footer/`/healthz` version just shows `dev`.)
 
@@ -293,7 +300,8 @@ docker compose start praeceptor
 #### Cold snapshot — the whole volume
 
 To capture the entire data volume as one archive (e.g. before a host migration), stop the
-app so SQLite's WAL is flushed for a consistent copy. The database is a Docker-managed
+app so SQLite's WAL is flushed for a consistent copy. ([`./update.sh`](update.sh) takes
+one of these automatically before every deployment update.) The database is a Docker-managed
 named volume (`praeceptor_data` — the name is `<compose-project>_data`, usually
 `praeceptor_data`; `docker volume ls` confirms, and `docker volume inspect praeceptor_data`
 shows its host path):
