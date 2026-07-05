@@ -23,7 +23,7 @@
         value="{{ student.daily_token_cap if student.daily_token_cap is not none else '' }}"></label>
     <div class="actions"><button type="submit">Save</button></div>
   </form>
-  <p class="muted">Today’s usage (local date): {{ usage.message_count if usage else 0 }} messages,
+  <p class="muted">Today’s usage (configured timezone): {{ usage.message_count if usage else 0 }} messages,
     {{ usage.token_count if usage else 0 }} tokens.</p>
   {% if usage and (usage.message_count or usage.token_count) %}
   <form method="post" action="/admin/students/{{ student.id }}/reset-usage" class="form inline">

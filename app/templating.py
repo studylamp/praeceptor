@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from fastapi.templating import Jinja2Templates
 
+from app import clock
 from app.ages import calc_age
 from app.config import BASE_DIR, settings
 from app.render import render_tutor_markdown
@@ -30,13 +31,14 @@ def _age_of(row) -> int | None:
 
 templates.env.filters["age_of"] = _age_of
 # `current_year()` — callable so a long-running server stays current across a year roll.
-templates.env.globals["current_year"] = lambda: datetime.now().year
+templates.env.globals["current_year"] = lambda: datetime.now(clock.get_app_tz()).year
 
 
 def _localdt(value: str | None) -> str:
     """Format a stored UTC timestamp (SQLite `datetime('now')` → "YYYY-MM-DD HH:MM:SS")
-    in the server's LOCAL time, so the admin's transcript times line up with the
-    local-date basis the daily caps use. Falls back to the raw value if unparseable."""
+    in the configured display zone (server-local when unset), so the admin's transcript
+    times line up with the date basis the daily caps use. Falls back to the raw value if
+    unparseable."""
     if not value:
         return ""
     try:
@@ -44,8 +46,8 @@ def _localdt(value: str | None) -> str:
     except (ValueError, TypeError):
         return value
     # Portable format (no %-d/%-I, which fail on Windows): e.g. "Jun 05, 2026 02:30 PM".
-    return dt.astimezone().strftime("%b %d, %Y %I:%M %p")
+    return clock.to_local(dt).strftime("%b %d, %Y %I:%M %p")
 
 
-# `| localdt` shows a stored UTC timestamp in server-local time.
+# `| localdt` shows a stored UTC timestamp in the configured display zone.
 templates.env.filters["localdt"] = _localdt

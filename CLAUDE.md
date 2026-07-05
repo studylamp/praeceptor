@@ -42,6 +42,7 @@ praeceptor/ (repo root)
 │  ├─ security.py          # argon2 hashing (student PINs)
 │  ├─ auth.py              # separate admin + student sessions, lockouts
 │  ├─ ages.py              # derive student age from birth_year/birth_month
+│  ├─ clock.py             # app-wide display/cap timezone (admin-set; caps + timestamp render)
 │  ├─ pipeline.py          # caps → gate → tutor → log (prepare/classify_turn/finalize)
 │  ├─ prompts.py           # the two prompt templates + assembly (gate + tutor)
 │  ├─ model_client.py      # LiteLLM wrapper (gate, tutor, streaming, agentic tools loop)

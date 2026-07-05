@@ -64,7 +64,10 @@ around a frontier model that adds exactly the controls a homeschooling parent ne
   age-appropriateness, and basic safety.
 - **Daily caps** — per-child message and token limits (nullable = unlimited), with a
   one-click reset of today's usage from the student page when a capped child needs
-  more time.
+  more time. Caps roll over at midnight in your configured timezone.
+- **Timezone** — set your household timezone in Settings; it drives when daily caps
+  reset and the times shown on conversation transcripts (messages are stored in UTC and
+  converted for display). Defaults to the server's local zone until set.
 - **Full transcript review** — read any conversation, including off-topic attempts the
   gate blocked.
 - **Built-in chat test** — an admin sandbox that runs the *full* student pipeline

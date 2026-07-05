@@ -6,10 +6,9 @@ attempts) before returning.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional
 
-from app import models, model_client
+from app import clock, models, model_client
 from app.config import settings
 from app.prompts import build_gate_system, build_tutor_system
 
@@ -70,8 +69,10 @@ def _trim_history(turns: list[dict]) -> list[dict]:
 
 
 def _today() -> str:
-    # Local server date; "daily" caps reset at local midnight. Configurable later.
-    return datetime.now().strftime("%Y-%m-%d")
+    # Calendar date in the configured display zone; "daily" caps reset at that zone's
+    # midnight. The zone is parent-set in admin → Settings (unset = server-local). The
+    # admin usage view uses the same basis (see admin._today). See app/clock.py.
+    return clock.today_str()
 
 
 @dataclass

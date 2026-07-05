@@ -330,6 +330,10 @@ def reset_usage(student_id: int, date: str) -> None:
 # Key for the parent's optional global educational/worldview framing (tutor-only).
 FRAMING_SETTING_KEY = "educational_framing"
 
+# Key for the app-wide display/cap timezone (an IANA name, e.g. "America/Chicago").
+# Empty/unset → the server's local zone. See app/clock.py.
+TIMEZONE_SETTING_KEY = "app_timezone"
+
 
 def get_setting(key: str) -> Optional[str]:
     with db() as conn:

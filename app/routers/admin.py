@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from app import auth, model_client, models, pipeline, sandbox, tutor_runtime
+from app import auth, clock, model_client, models, pipeline, sandbox, tutor_runtime
 from app.config import settings
 from app.prompts import build_tutor_system
 from app.render import render_tutor_markdown
@@ -39,7 +39,7 @@ MODEL_SUGGESTIONS = (
 
 
 def _today() -> str:
-    return datetime.now().strftime("%Y-%m-%d")  # local date, matches the caps basis
+    return clock.today_str()  # configured display zone — same basis as the daily caps
 
 
 def _pin_is_default(student) -> bool:
@@ -152,17 +152,41 @@ def sandbox_recheck(request: Request, _: bool = Depends(auth.current_admin)):
 # framing the tutor honors (shapes presentation only — never the gate, scope, age, or
 # safety). Stored in the `settings` k/v table; takes effect on the next message.
 
+def _settings_context(**overrides):
+    """Shared context for the settings page (current values + the timezone picker list).
+    Overrides let a re-render show just-submitted values instead of the stored ones."""
+    ctx = {
+        "framing": models.get_setting(models.FRAMING_SETTING_KEY) or "",
+        "timezone": models.get_setting(models.TIMEZONE_SETTING_KEY) or "",
+        "timezones": clock.available_zone_names(),
+    }
+    ctx.update(overrides)
+    return ctx
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, saved: int = 0, _: bool = Depends(auth.current_admin)):
-    framing = models.get_setting(models.FRAMING_SETTING_KEY) or ""
     return templates.TemplateResponse(
-        request, "admin/settings.html", {"framing": framing, "saved": bool(saved)})
+        request, "admin/settings.html", _settings_context(saved=bool(saved)))
 
 
 @router.post("/settings")
 def settings_save(request: Request, educational_framing: str = Form(""),
-                  _: bool = Depends(auth.current_admin)):
+                  app_timezone: str = Form(""), _: bool = Depends(auth.current_admin)):
+    tz = app_timezone.strip()
+    # Empty = server-local (the default). Otherwise it must be a real IANA zone; reject a
+    # bad value (only reachable by a tampered POST, since the form is a fixed dropdown)
+    # rather than storing something that would silently fall back to server-local. Keep the
+    # user's other unsaved edit (framing) on the re-render.
+    if tz and tz not in clock.available_zone_names():
+        return templates.TemplateResponse(
+            request, "admin/settings.html",
+            _settings_context(timezone=tz, framing=educational_framing,
+                              error=f"Unknown timezone: {tz}"),
+            status_code=400)
     models.set_setting(models.FRAMING_SETTING_KEY, _clean_str(educational_framing))
+    models.set_setting(models.TIMEZONE_SETTING_KEY, tz or None)
+    clock.invalidate()  # take effect on the next request without a restart
     return RedirectResponse("/admin/settings?saved=1", status_code=303)
 
 

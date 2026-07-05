@@ -1,5 +1,6 @@
-{# One transcript message row `m` for the admin oversight view: role, local timestamp,
-   token/gate metadata, and (for a blocked/off-topic turn) the gate reason. Admin sees
+{# One transcript message row `m` for the admin oversight view: role, timestamp (shown in
+   the configured timezone), token/gate metadata, and (for a blocked/off-topic turn) the
+   gate reason. Admin sees
    ALL turns, including blocked ones. Tutor markdown goes through the sanitizing filter. #}
 <div class="bubble {{ 'student' if m.role == 'student' else 'tutor' }}{% if m.blocked %} blocked{% endif %}">
   <div class="who">

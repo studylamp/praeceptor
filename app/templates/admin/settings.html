@@ -3,21 +3,37 @@
 {% block content %}
 {% include "admin/_nav.html" %}
 <h1>Settings</h1>
-{% if saved %}<p class="banner ok">Saved — takes effect on the student's next message.</p>{% endif %}
+{% if saved %}<p class="banner ok">Saved.</p>{% endif %}
+{% if error %}<p class="banner error">{{ error }}</p>{% endif %}
 
-<h2>Educational framing <small class="muted">(optional)</small></h2>
-<p class="muted">Describe your family's educational or worldview framing and the tutor will
-  honor it across every subject when presenting material on contested or worldview-sensitive
-  topics. It shapes only how the tutor PRESENTS material; it does not change a subject's
-  scope, age-appropriateness, or safety, and it never affects which messages are allowed.
-  Spell out exactly what you want — for example, if you'd also like the tutor to cover how a
-  topic is commonly taught elsewhere, say so here. Leave it blank for no framing. You can add
-  a subject-specific note in each subject's editor.</p>
 <form method="post" action="/admin/settings" class="form">
+  <h2>Educational framing <small class="muted">(optional)</small></h2>
+  <p class="muted">Describe your family's educational or worldview framing and the tutor will
+    honor it across every subject when presenting material on contested or worldview-sensitive
+    topics. It shapes only how the tutor PRESENTS material; it does not change a subject's
+    scope, age-appropriateness, or safety, and it never affects which messages are allowed.
+    Spell out exactly what you want — for example, if you'd also like the tutor to cover how a
+    topic is commonly taught elsewhere, say so here. Leave it blank for no framing. You can add
+    a subject-specific note in each subject's editor. Takes effect on the student's next message.</p>
   <label>Global educational framing
     <textarea name="educational_framing" rows="10" autofocus
       placeholder="e.g. Emphasize a classical, Western-canon approach and primary sources.">{{ framing }}</textarea>
   </label>
+
+  <h2>Timezone</h2>
+  <p class="muted">The zone used for <strong>daily-cap resets</strong> (caps roll over at this
+    zone's midnight) and for the <strong>times shown</strong> on conversations. Message times
+    are stored in UTC and converted for display. Leave it on "Server local time" to follow
+    the machine's own clock. Takes effect right away.</p>
+  <label>Timezone
+    <select name="app_timezone">
+      <option value=""{% if not timezone %} selected{% endif %}>Server local time (default)</option>
+      {% for z in timezones %}
+      <option value="{{ z }}"{% if z == timezone %} selected{% endif %}>{{ z }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
   <div class="actions">
     <button type="submit">Save settings</button>
     <a href="/admin">Done</a>
