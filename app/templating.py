@@ -18,6 +18,10 @@ templates.env.globals["project_url"] = settings.project_url
 # Build/version string for the admin footer + /healthz — a `git describe` value like
 # "v0.1.0", "v0.1.0-3-gabc1234", a bare "abc1234", or "dev" (unset / plain build).
 templates.env.globals["app_version"] = settings.app_version
+# App-wide default tutor model (a subject inherits this unless it pins an override — see
+# pipeline.resolve_tutor_model). Env-set, so it only changes on restart; a global spares
+# every admin template that displays it from threading it through the route context.
+templates.env.globals["tutor_model_default"] = settings.tutor_model_default
 
 
 def _age_of(row) -> int | None:

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     answer_policy      TEXT,
     gate_scope         TEXT,
     curriculum_context TEXT,
-    tutor_model        TEXT    NOT NULL DEFAULT 'anthropic/claude-sonnet-5',
+    tutor_model        TEXT    NOT NULL DEFAULT '',   -- '' = inherit the app default (TUTOR_MODEL_DEFAULT); non-empty = pinned override. See pipeline.resolve_tutor_model
     tools_enabled      INTEGER NOT NULL DEFAULT 0,   -- 1 = tutor may use code/compute tools
     multi_chat_enabled INTEGER NOT NULL DEFAULT 0,   -- 1 = student may keep several chats (see conversations)
     framing_supplement TEXT,                          -- optional per-subject worldview/framing note

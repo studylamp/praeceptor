@@ -344,7 +344,7 @@ async def chat_send_stream(request: Request, subject_id: int, message: str = For
                 meta: dict = {}
                 try:
                     async for ev in tutor_runtime.tutor_stream(
-                        prep.subject["tutor_model"], system, prep.history, use_tools=use_tools
+                        prep.tutor_model, system, prep.history, use_tools=use_tools
                     ):
                         if isinstance(ev, str):
                             chunks.append(ev)

@@ -93,7 +93,9 @@ uv run uvicorn app.main:app --reload           # run; check http://127.0.0.1:800
 - **Auth boundary is the main security control:** admin password = `ADMIN_PASSWORD`
   env (no admin table); student PINs are argon2-hashed in `students.pin_hash`. Keep
   admin and student sessions separate.
-- **Models** (editable per subject in admin): gate `anthropic/claude-haiku-4-5`,
-  tutor `anthropic/claude-sonnet-5` (default for all subjects). Do **not** send
+- **Models**: gate `anthropic/claude-haiku-4-5` (`GATE_MODEL` env, always app-wide);
+  tutor default `anthropic/claude-sonnet-5` (`TUTOR_MODEL_DEFAULT` env, resolved live per
+  request — subjects inherit it unless admin pins a per-subject override; `''` in
+  `subjects.tutor_model` = inherit, see `pipeline.resolve_tutor_model`). Do **not** send
   `temperature` on tutor calls (some Claude models reject it; `litellm.drop_params=True`).
 - Verify changes against a throwaway DB before wiring to the UI.

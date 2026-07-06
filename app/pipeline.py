@@ -182,6 +182,17 @@ def classify_turn(subject, enrolled, text: str, history: list[dict] | None) -> G
                         error_kind=gate.get("error_kind"))
 
 
+def resolve_tutor_model(subject) -> str:
+    """The model string to call for this subject's tutor turn.
+
+    An empty (or missing) `subjects.tutor_model` is the "inherit" sentinel: the subject
+    follows the app-wide default (`TUTOR_MODEL_DEFAULT` in .env) resolved LIVE at request
+    time, so bumping that env value moves every inheriting subject at once — no per-subject
+    edit. A non-empty value is an explicit override pinned to that subject. The default is
+    read fresh here (not snapshotted at create time), which is the whole point."""
+    return (subject["tutor_model"] or "").strip() or settings.tutor_model_default
+
+
 @dataclass
 class Prepared:
     """Outcome of the front half of the pipeline (caps + gate + branch).
@@ -200,6 +211,7 @@ class Prepared:
     history: Optional[list[dict]] = None  # tutor history + the current msg as last user turn
     gate_tokens: int = 0
     gate_reason: Optional[str] = None
+    tutor_model: Optional[str] = None  # resolved (override or app default); set on the on-subject branch
 
 
 def prepare(student_id: int, subject_id: int, text: str,
@@ -266,7 +278,8 @@ def prepare(student_id: int, subject_id: int, text: str,
     # current message isn't stored yet; append it as the final user turn.
     full_history = history + [{"role": "user", "content": text}]
     return Prepared(student=student, subject=subject, conv_id=conv_id, history=full_history,
-                    gate_tokens=gate_tokens, gate_reason=reason)
+                    gate_tokens=gate_tokens, gate_reason=reason,
+                    tutor_model=resolve_tutor_model(subject))
 
 
 def finalize_on_subject(conv_id: int, student_id: int, text: str, gate_reason: Optional[str],
@@ -299,7 +312,7 @@ def process_message(student_id: int, subject_id: int, text: str,
     try:
         framing = models.get_setting(models.FRAMING_SETTING_KEY)
         reply, tutor_tokens = model_client.run_tutor(
-            prep.subject["tutor_model"],
+            prep.tutor_model,
             build_tutor_system(prep.student, prep.subject, framing=framing),
             prep.history,
         )

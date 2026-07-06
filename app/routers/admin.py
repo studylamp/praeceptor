@@ -159,15 +159,27 @@ def _settings_context(**overrides):
         "framing": models.get_setting(models.FRAMING_SETTING_KEY) or "",
         "timezone": models.get_setting(models.TIMEZONE_SETTING_KEY) or "",
         "timezones": clock.available_zone_names(),
+        # The .env-set gate model, shown read-only so the parent can see what runs the gate
+        # and what to bump on a model release. (tutor_model_default is a template global.)
+        "gate_model": settings.gate_model,
+        # Always present so the template's `is not none` guard is reliable on EVERY render
+        # of settings.html (Jinja's Undefined is not None, so omitting this would show the
+        # reset flash on e.g. the bad-timezone error re-render). The reset redirect
+        # overrides it with the count of cleared subjects.
+        "models_reset": None,
     }
     ctx.update(overrides)
     return ctx
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, saved: int = 0, _: bool = Depends(auth.current_admin)):
+def settings_page(request: Request, saved: int = 0, models_reset: Optional[int] = None,
+                  _: bool = Depends(auth.current_admin)):
+    # models_reset is set only when returning from a "reset all to default" POST, carrying
+    # the count of subjects whose override was cleared; absent (None) = don't show the flash.
     return templates.TemplateResponse(
-        request, "admin/settings.html", _settings_context(saved=bool(saved)))
+        request, "admin/settings.html",
+        _settings_context(saved=bool(saved), models_reset=models_reset))
 
 
 @router.post("/settings")
@@ -188,6 +200,16 @@ def settings_save(request: Request, educational_framing: str = Form(""),
     models.set_setting(models.TIMEZONE_SETTING_KEY, tz or None)
     clock.invalidate()  # take effect on the next request without a restart
     return RedirectResponse("/admin/settings?saved=1", status_code=303)
+
+
+@router.post("/settings/reset-models")
+def settings_reset_models(request: Request, _: bool = Depends(auth.current_admin)):
+    """Clear every subject's pinned tutor-model override so all subjects inherit the app
+    default (TUTOR_MODEL_DEFAULT) again — the one-click way to move a whole fleet onto a
+    freshly released model without editing each subject. Redirects back to Settings with a
+    count of how many overrides were cleared."""
+    count = models.reset_all_tutor_models()
+    return RedirectResponse(f"/admin/settings?models_reset={count}", status_code=303)
 
 
 # ----------------------------- student CRUD -------------------------------
@@ -341,7 +363,9 @@ def _subject_fields_from_form(form: dict) -> dict:
     name = _clean_str(form.get("name"))
     if not name:
         raise ValueError("Subject name is required.")
-    tutor_model = _clean_str(form.get("tutor_model")) or settings.tutor_model_default
+    # Blank = the "inherit the app default" sentinel (empty string), resolved live at
+    # request time by pipeline.resolve_tutor_model. A non-empty value pins this subject.
+    tutor_model = _clean_str(form.get("tutor_model")) or ""
     return {
         "name": name,
         "grade_level": _clean_str(form.get("grade_level")),
@@ -365,9 +389,11 @@ def subject_new(request: Request, student_id: int, _: bool = Depends(auth.curren
     # New subjects default to computation tools ON (the tutor only actually calls them for
     # math/science; they're inert elsewhere). A parent can uncheck it. On a failed-validation
     # re-render, subject_create passes the submitted form instead, so an explicit uncheck sticks.
+    # tutor_model is left blank so new subjects INHERIT the app default (TUTOR_MODEL_DEFAULT)
+    # live — the parent only fills it in to pin an override.
     return _subject_form_response(
         request, student=student,
-        vals={"tutor_model": settings.tutor_model_default, "tools_enabled": 1}, creating=True)
+        vals={"tutor_model": "", "tools_enabled": 1}, creating=True)
 
 
 @router.post("/students/{student_id}/subjects")
@@ -695,7 +721,7 @@ async def test_chat_stream(request: Request, subject_id: int = Form(...),
             return
         student_id = student["id"]
         enrolled = models.list_subjects(student_id, active_only=True)
-        model = subject["tutor_model"]
+        model = pipeline.resolve_tutor_model(subject)
         started = time.monotonic()
 
         def elapsed_ms() -> int:

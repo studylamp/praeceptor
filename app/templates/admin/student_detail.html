@@ -52,7 +52,7 @@
       <tr class="{{ '' if s.active else 'inactive' }}">
         <td>{{ s.name }}</td>
         <td>{{ s.grade_level or "—" }}</td>
-        <td><code>{{ s.tutor_model }}</code></td>
+        <td>{% if s.tutor_model %}<code>{{ s.tutor_model }}</code>{% else %}<span class="muted">Default (<code>{{ tutor_model_default }}</code>)</span>{% endif %}</td>
         <td>{% if s.active %}<span class="badge ok">active</span>{% else %}<span class="badge">inactive</span>{% endif %}</td>
         <td class="rowactions">
           <a href="/admin/subjects/{{ s.id }}/context">Context</a>

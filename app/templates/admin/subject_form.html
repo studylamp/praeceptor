@@ -43,8 +43,8 @@
     <textarea name="curriculum_context" rows="5">{{ vals.get('curriculum_context','') or '' }}</textarea></label>
   <label>Worldview / framing notes for this subject <small>(optional; adds to the global framing in Settings)</small>
     <textarea name="framing_supplement" rows="3">{{ vals.get('framing_supplement','') or '' }}</textarea></label>
-  <label>Tutor model
-    <input name="tutor_model" list="model-list" value="{{ vals.get('tutor_model','') or '' }}">
+  <label>Tutor model <small>(leave blank to follow the app default, currently <code>{{ tutor_model_default }}</code> — set a value only to pin this subject to a specific model)</small>
+    <input name="tutor_model" list="model-list" placeholder="Leave blank to follow the app default" value="{{ vals.get('tutor_model','') or '' }}">
     <datalist id="model-list">{% for m in models %}<option value="{{ m }}">{% endfor %}</datalist>
   </label>
   <label class="check"><input type="checkbox" name="tools_enabled" value="1" {{ "checked" if vals.get('tools_enabled') else "" }}>

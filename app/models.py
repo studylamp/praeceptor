@@ -149,6 +149,18 @@ def copy_subject(subject_id: int, target_student_id: int) -> Optional[int]:
         return int(cur.lastrowid)
 
 
+def reset_all_tutor_models() -> int:
+    """Clear every pinned tutor-model override so all subjects fall back to the app default
+    (settings.tutor_model_default) resolved live at request time — see
+    pipeline.resolve_tutor_model. The "inherit" sentinel is an empty string. Returns the
+    number of subjects that actually had an override (so the admin sees a truthful count);
+    already-inheriting subjects are left untouched."""
+    with db() as conn:
+        cur = conn.execute(
+            "UPDATE subjects SET tutor_model = '' WHERE COALESCE(tutor_model, '') <> ''")
+        return cur.rowcount
+
+
 def delete_subject(subject_id: int) -> None:
     """Remove a subject and (via cascade) its conversations + messages. Destructive —
     prefer deactivating (active=0), which preserves the logs; the admin UI confirms."""

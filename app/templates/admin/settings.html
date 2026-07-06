@@ -5,6 +5,9 @@
 <h1>Settings</h1>
 {% if saved %}<p class="banner ok">Saved.</p>{% endif %}
 {% if error %}<p class="banner error">{{ error }}</p>{% endif %}
+{% if models_reset is not none %}<p class="banner ok">
+  {% if models_reset %}Reset {{ models_reset }} subject{{ "" if models_reset == 1 else "s" }} to the default tutor model.
+  {% else %}No subjects had a model override — every subject already follows the default.{% endif %}</p>{% endif %}
 
 <form method="post" action="/admin/settings" class="form">
   <h2>Educational framing <small class="muted">(optional)</small></h2>
@@ -39,4 +42,23 @@
     <a href="/admin">Done</a>
   </div>
 </form>
+
+<section class="panel">
+  <h2>Models</h2>
+  <p class="muted">The app-wide model defaults live in the server's <code>.env</code> — edit them
+    there, then run <code>docker compose up -d</code> (a plain restart does not re-read
+    <code>.env</code>; bare-metal installs just restart the app) to move every subject that
+    follows the default onto a new model (e.g. when a new Sonnet ships). They're shown here
+    read-only.</p>
+  <p><strong>Gate model</strong> <small class="muted">(<code>GATE_MODEL</code> — always app-wide)</small><br>
+    <code>{{ gate_model }}</code></p>
+  <p><strong>Default tutor model</strong> <small class="muted">(<code>TUTOR_MODEL_DEFAULT</code>)</small><br>
+    <code>{{ tutor_model_default }}</code></p>
+  <p class="muted">Each subject follows this default tutor model unless you pin an override in that
+    subject's editor. Use the button below to clear every override at once so all subjects follow
+    the default again.</p>
+  <form method="post" action="/admin/settings/reset-models">
+    <button type="submit">Reset all subjects to the default tutor model</button>
+  </form>
+</section>
 {% endblock %}

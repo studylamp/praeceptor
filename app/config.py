@@ -34,7 +34,11 @@ class Settings:
     # persists across rebuilds. The sandbox deny-list covers it too — snapshots are
     # byte-identical copies of the DB.
     backup_dir: str = os.getenv("BACKUP_DIR", str(BASE_DIR / ".backups"))
-    # Model defaults (LiteLLM model strings); per-subject tutor model overrides this.
+    # Model defaults (LiteLLM model strings). The gate model is always app-wide; a subject's
+    # tutor model follows tutor_model_default (resolved live per request) unless it pins an
+    # override — see pipeline.resolve_tutor_model. Bump these on a model release, then
+    # restart (Docker: `docker compose up -d` — a plain restart doesn't re-read .env) to
+    # move every inheriting subject at once.
     gate_model: str = os.getenv("GATE_MODEL", "anthropic/claude-haiku-4-5")
     tutor_model_default: str = os.getenv(
         "TUTOR_MODEL_DEFAULT", "anthropic/claude-sonnet-5"

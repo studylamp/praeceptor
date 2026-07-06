@@ -100,8 +100,9 @@ around a frontier model that adds exactly the controls a homeschooling parent ne
   are billed at a fraction of the naive input cost, and daily token caps track real
   dollar cost.
 - **Provider-flexible** — all inference goes through [LiteLLM](https://github.com/BerriAI/litellm),
-  so models are `provider/model` strings you set per subject. Anthropic by default;
-  OpenAI, Gemini, Bedrock, Vertex, or local models work too.
+  so models are `provider/model` strings: an app-wide default in `.env`, optionally
+  pinned per subject in admin. Anthropic by default; OpenAI, Gemini, Bedrock, Vertex,
+  or local models work too.
 
 ---
 
@@ -112,7 +113,7 @@ Student message
    │
    ▼
 enforce daily caps  →  gate (classifier)  →  branch
-                                              ├─ on_subject     → tutor (per-subject model) → stream reply
+                                              ├─ on_subject     → tutor (default or pinned model) → stream reply
                                               ├─ other_subject  → offer to switch subjects
                                               └─ off_topic      → friendly refusal (logged as a blocked attempt)
    │
@@ -218,6 +219,11 @@ A fresh install starts **empty** — no students or subjects. Log into the admin
 create your children and their subjects; everything (students, subjects, models, caps,
 framing) is configured there, no redeploy needed. Set a real PIN for each student — the
 dashboard warns about any student left on the weak default `1234`.
+
+Subjects follow the app-wide default tutor model (`TUTOR_MODEL_DEFAULT` in `.env`) unless
+you pin a model in the subject editor. Admin → Settings shows the defaults and has a
+one-click "reset all subjects to the default" — handy when a new model ships, and after
+upgrading an older install, whose existing subjects all start out pinned.
 
 Updating: run [`./update.sh`](update.sh) from the checkout. One command does the whole
 cycle: `git pull --ff-only`, build the new image *while the old app is still serving*,
