@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_macros.html" import brand %}
 {% block title %}Admin sign in — Praeceptor{% endblock %}
 {% block content %}
+<div class="login-brand">{{ brand(tag='admin', klass='brand--lg') }}</div>
 <h1>Parent / admin sign in</h1>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="/admin/login" class="login">

@@ -1,4 +1,4 @@
-# Praeceptor
+# <img src="docs/img/logo.svg" height="26" alt=""> Praeceptor
 
 **A self-hosted, parent-controlled AI tutor for homeschooling families.**
 

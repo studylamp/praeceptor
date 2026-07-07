@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Praeceptor{% endblock %}</title>
+  {# Favicon: SVG (theme-aware, preferred by modern browsers), .ico fallback for older
+     Safari/legacy, and the touch icon for the home-screen bookmark the students tap. #}
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ app_version }}">
+  <link rel="icon" href="/static/favicon.ico?v={{ app_version }}" sizes="any">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ app_version }}">
   {# ?v= busts browser heuristic caching (StaticFiles sends no Cache-Control): the
      version string changes per build, so a deploy can't leave devices on stale assets. #}
   <link rel="stylesheet" href="/static/katex/katex.min.css?v={{ app_version }}">

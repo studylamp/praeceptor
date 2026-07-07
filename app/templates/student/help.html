@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros.html" import brand %}
 {% block title %}Help — Praeceptor{% endblock %}
 {% block content %}
 <header class="topbar">
+  {{ brand('/subjects') }}
   <a href="/subjects">&larr; Subjects</a>
-  <span>Help</span>
-  <a href="/logout">Log out</a>
+  <span class="topbar-note">Help</span>
+  <nav class="bar-actions"><a href="/logout">Log out</a></nav>
 </header>
 
 <h1>Using your tutor</h1>

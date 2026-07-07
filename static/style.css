@@ -43,22 +43,48 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* Top bar shared by the student and admin views: a self-contained card, not a bare
    underlined row. The admin nav layers its own nav-link styles on top (.admin-nav). */
 .topbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: 0.5rem 0.9rem; flex-wrap: wrap;
   padding: 0.5rem 0.85rem; margin-bottom: 1rem;
   background: var(--card); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 /* Student topbar links → subtle pills (scoped with :not(.admin-nav) so the admin
-   nav, which has its own link rules, is left entirely alone). */
-.topbar:not(.admin-nav) a {
+   nav, which has its own link rules, is left entirely alone; the brand link opts out
+   of the pill treatment via :not(.brand)). */
+.topbar:not(.admin-nav) a:not(.brand) {
   text-decoration: none; color: var(--fg);
   padding: 0.35rem 0.7rem; border-radius: 8px; font-size: 0.95rem; line-height: 1.2;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.topbar:not(.admin-nav) a:hover { background: var(--bg); color: var(--accent); }
+.topbar:not(.admin-nav) a:not(.brand):hover { background: var(--bg); color: var(--accent); }
 .topbar:not(.admin-nav) a[href$="/logout"] { color: var(--muted); }
 .topbar:not(.admin-nav) a[href$="/logout"]:hover { color: var(--accent); }
-.topbar .bar-actions { display: flex; align-items: center; gap: 0.15rem; }
+.topbar .bar-actions { display: flex; align-items: center; gap: 0.15rem; margin-left: auto; }
+/* A muted contextual label in the topbar (student name, subject, page). */
+.topbar .topbar-note { color: var(--muted); font-size: 0.95rem; }
+
+/* Brand lockup (topbars + sign-in). The mark uses currentColor so its blue is --accent
+   and follows the theme toggle; the wordmark stays in the ink colour. */
+.brand { display: inline-flex; align-items: center; gap: 0.45rem; text-decoration: none;
+         flex: none; line-height: 1; }
+.brand-mark { width: 1.5rem; height: 1.5rem; flex: none; color: var(--accent); display: block; }
+.brand-name { font-weight: 700; color: var(--fg); font-size: 1.02rem; letter-spacing: -0.01em;
+              white-space: nowrap; }
+.brand-tag { color: var(--accent); font-weight: 600; }
+a.brand:hover .brand-name { color: var(--accent); }
+
+/* In the top bars, keep the lockup centred (so the wordmark stays on the same baseline
+   as the other bar text) but nudge just the bubble down so its body sits on that line
+   and the callout tail hangs below like a descender. translateY is a % of the mark's
+   own height, so it holds at any mark size; the centred sign-in lockups are unaffected. */
+.topbar .brand-mark { transform: translateY(14%); }
+
+/* Sign-in screens: larger, centred lockup above the heading. */
+.login-brand { display: flex; justify-content: center; margin: 0.25rem 0 1.5rem; }
+.brand--lg { gap: 0.55rem; }
+.brand--lg .brand-mark { width: 2rem; height: 2rem; }
+.brand--lg .brand-name { font-size: 1.4rem; }
 
 /* Login */
 .login .tiles { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
@@ -222,9 +248,10 @@ table.guide code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-
   padding: 0.45rem 0.6rem;
   flex-wrap: wrap;
 }
-.admin-nav .brand { text-decoration: none; color: var(--fg); font-weight: 700; padding: 0 0.5rem; }
-.admin-nav .brand span { color: var(--accent); font-weight: 600; }
-.admin-nav nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; }
+.admin-nav .brand { padding: 0 0.3rem; }
+/* Push the nav links to the right of the brand (the topbar no longer uses
+   space-between; each bar's right-hand group opts in with margin-left:auto). */
+.admin-nav nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; margin-left: auto; }
 .admin-nav nav a {
   text-decoration: none;
   color: var(--fg);

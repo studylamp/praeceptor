@@ -1,7 +1,8 @@
 {# Admin top navigation. Included on every admin page except the login. #}
+{% from "_macros.html" import brand %}
 {% set p = request.url.path %}
 <header class="topbar admin-nav">
-  <a class="brand" href="/admin">Praeceptor <span>admin</span></a>
+  {{ brand('/admin', tag='admin') }}
   <nav>
     <a href="/admin" class="{{ 'active' if p == '/admin' else '' }}">Dashboard</a>
     <a href="/admin/curriculum" class="{{ 'active' if p.startswith('/admin/curriculum') or '/context' in p else '' }}">Curriculum</a>
