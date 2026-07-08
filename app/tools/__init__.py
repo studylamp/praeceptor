@@ -35,6 +35,19 @@ def _scrub_paths(text: str) -> str:
     return text
 
 
+# Fixed, app-authored strings we inject into tool RESULTS the model reads — named so
+# the admin prompt-transparency page can show them verbatim (see MODEL_FEEDBACK_NOTES
+# at the bottom; add any new one there too). Everything else in a tool result is the
+# code's own output/error, path-scrubbed.
+FIGURE_NOTE = ("\n[{n} figure(s) rendered and shown to the student. Refer to "
+               "them naturally; do not describe SVG.]")
+NO_TEXT_NOTE = "(no text output)"
+NO_OUTPUT_NOTE = "(ran successfully but produced no output — use print() to show results)"
+VERIFY_UNCHECKABLE_NOTE = ("could not check that claim — re-state the operands as plain "
+                           "math expressions")
+VERIFY_FAILED_NOTE = "the claim did not hold"
+
+
 def _python_handler(args: dict) -> dict:
     code = args.get("code") if isinstance(args, dict) else None
     if not isinstance(code, str) or not code.strip():
@@ -45,11 +58,8 @@ def _python_handler(args: dict) -> dict:
     figures = res.get("figures") or []
     if res.get("ok"):
         out = (res.get("stdout") or "").strip()
-        note = (f"\n[{len(figures)} figure(s) rendered and shown to the student. Refer to "
-                "them naturally; do not describe SVG.]") if figures else ""
-        body = out[:_MODEL_OUTPUT_CAP] or (
-            "(no text output)" if figures else
-            "(ran successfully but produced no output — use print() to show results)")
+        note = FIGURE_NOTE.format(n=len(figures)) if figures else ""
+        body = out[:_MODEL_OUTPUT_CAP] or (NO_TEXT_NOTE if figures else NO_OUTPUT_NOTE)
         return {"ok": True, "output": body + note, "figures": figures}
     # Failure: hand back the exception type + message so the model can self-correct, but
     # NOT the raw traceback (it carries host paths/internals that could leak via the
@@ -142,13 +152,15 @@ def _verify_handler(args: dict) -> dict:
     detail = ""
     for line in out.splitlines():
         if line.startswith("DETAIL") or f"VERIFY {nonce} ERROR" in line:
-            detail = line.replace(nonce, "").replace("VERIFY  ERROR", "error:").strip()
+            # Same posture as the error paths: scrub any path a sympy exception
+            # message might carry before it goes back to the model.
+            detail = _scrub_paths(line.replace(nonce, "").replace("VERIFY  ERROR", "error:").strip())
             break
     if f"VERIFY {nonce} ERROR" in out:
         return {"ok": True, "verified": False,
-                "error": "could not check that claim — re-state the operands as plain math expressions",
+                "error": VERIFY_UNCHECKABLE_NOTE,
                 "detail": detail[:500]}
-    return {"ok": True, "verified": False, "detail": detail[:500] or "the claim did not hold"}
+    return {"ok": True, "verified": False, "detail": detail[:500] or VERIFY_FAILED_NOTE}
 
 
 # name -> {spec, handler}
@@ -218,6 +230,20 @@ _REGISTRY: dict[str, dict[str, Any]] = {
         },
     },
 }
+
+
+# The recurring coaching strings above, with when each is sent — rendered verbatim by
+# the admin prompt-transparency page. One-off validation/failure notices (bad tool
+# arguments, timeouts, sandbox refusals, verify's "DETAIL solver got:" line) are
+# described there in prose instead. Keep in step with the handlers.
+MODEL_FEEDBACK_NOTES: tuple[tuple[str, str], ...] = (
+    ("python — the code drew figures", FIGURE_NOTE.format(n="N").strip()),
+    ("python — the code printed nothing", NO_OUTPUT_NOTE),
+    ("python — figures but no printed text", NO_TEXT_NOTE),
+    ("verify — the claim couldn't be checked", VERIFY_UNCHECKABLE_NOTE),
+    ("verify — the claim is false (and there is no more specific detail to report)",
+     VERIFY_FAILED_NOTE),
+)
 
 
 def tool_specs(names: list[str] | None = None) -> list[dict]:

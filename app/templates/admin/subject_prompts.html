@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Prompts — {{ subject.name }}{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<p><a href="/admin/students/{{ student.id }}">← {{ student.name }}</a></p>
+<h1>Exact prompts <small class="muted">· {{ subject.name }} ({{ student.name }})</small></h1>
+
+<p class="muted">Everything below is the actual text sent to the AI models when
+{{ student.name }} uses this subject, assembled live by the same code a real turn runs —
+so this page always matches what is sent. Only the conversation itself — the student's
+messages and the tutor's replies — is replaced with ‹placeholders›. Edit the subject or
+Settings and this page reflects it immediately. Beyond what is shown here, the models
+receive only the conversation{% if use_tools %} and the results of the tool calls the
+tutor makes (see the tools section below){% endif %} — no other hidden prompting.</p>
+
+{% if not subject.active %}
+<p class="banner warn">This subject is inactive, so students can't chat in it right now.
+The preview shows exactly what a turn would send once it's reactivated (including this
+subject rejoining the enrolled-subjects list in the gate prompt).</p>
+{% endif %}
+
+<section class="panel">
+  <h2>What happens on each message</h2>
+  <ol class="muted prompt-steps">
+    <li>The <strong>gate</strong> (<code>{{ gate_model }}</code>) checks the message is
+      schoolwork for an enrolled subject. It only classifies — it never answers. If it
+      can't produce a valid verdict, the tutor is withheld (it fails closed, never open).</li>
+    <li>If the message is on subject, the <strong>tutor</strong>
+      (<code>{{ tutor_model }}</code>{% if model_inherited %} — inherited from the app
+      default{% else %} — pinned for this subject{% endif %}) answers. It receives its
+      system prompt, the conversation so far, and the new message. Long chats are
+      trimmed: once the history passes {{ max_history_kept }} turns it is cut back to the
+      most recent {{ max_history_turns }} (so the model sees at most
+      {{ max_history_kept }} turns, and normally at most roughly
+      {{ "{:,}".format(max_history_tokens) }} estimated tokens) — older turns drop out of
+      the model's view but stay in your conversation log. Messages the gate blocked are
+      never re-sent to either model; they too exist only in your log.</li>
+    {% if use_tools %}
+    <li>This subject's tutor can also run <strong>sandboxed Python</strong> to compute and
+      verify answers; the tool definitions it sees are shown at the bottom.</li>
+    {% endif %}
+  </ol>
+</section>
+
+<section class="panel">
+  <h2>1 · Gate system prompt</h2>
+  <p class="muted">Built from this subject and {{ student.name }}'s enrolled active
+    subjects (each listed with its gate scope). The model's reply is additionally
+    constrained to the JSON shape named at the end.</p>
+  <pre class="prompt-block">{{ gate_system }}</pre>
+  <h3>How the student's message is presented to the gate</h3>
+  <p class="muted">The gate is shown at most the last {{ gate_history_turns }} conversation
+    turns (a turn longer than {{ gate_snippet_chars }} characters is cut there and marked
+    with an ellipsis) so a short reply like "yes" or "7" is judged in context. When there
+    is no prior on-subject conversation to show — such as the first message of a chat —
+    the "Recent conversation" block is omitted.</p>
+  <pre class="prompt-block">{{ gate_user_example }}</pre>
+</section>
+
+<section class="panel">
+  <h2>2 · Tutor system prompt</h2>
+  <p class="muted">This is the tutor's entire standing instruction set — subject fields,
+    curriculum context, and any family framing from Settings appear verbatim where you
+    see them below. Besides it, the tutor receives the conversation history and the
+    student's new message{% if use_tools %}, plus the tool definitions and tool results
+    described in the next section{% endif %} — nothing else.</p>
+  <pre class="prompt-block">{{ tutor_system }}</pre>
+</section>
+
+<section class="panel">
+  <h2>3 · Computation tools</h2>
+  {% if use_tools %}
+  <p class="muted">These tool definitions are sent with the tutor's calls for this
+    subject — their descriptions are instructions the model reads. Tool code and results
+    pass only between the tutor and the sandbox; the student sees the tutor's explanation
+    and any figures, never the code. (Two exceptions: after too many tool rounds in a
+    single turn, a final wrap-up call runs without the tools so the turn always ends in a
+    worded answer; and if a browser has JavaScript turned off, the app falls back to a
+    simpler mode where the tutor answers without tools — that fallback also omits the
+    "Computation tools" section of the system prompt above.)</p>
+  <pre class="prompt-block">{{ tool_specs_json }}</pre>
+  <h3>Fixed notes Praeceptor can add to a tool result</h3>
+  <p class="muted">A tool's result goes back to the tutor as JSON: the code's own printed
+    output (truncated if very long) or its error message (error messages have file paths
+    scrubbed out first), to which the server can add the fixed notes below. If a tool
+    call is malformed, times out, or the sandbox refuses it (for example, an attempt at
+    network or file access), the result is instead a short plain-English notice saying
+    what went wrong, so the tutor can correct itself; and when a <code>solves</code>
+    check fails, <code>verify</code> also reports the solution set it actually found.
+    For the <code>verify</code> tool, the checking code is written by the server, never
+    by the tutor, so the tutor cannot grade its own work.</p>
+  <table class="grid">
+    <thead><tr><th>When it's added</th><th>Exact text</th></tr></thead>
+    <tbody>
+    {% for when, text in tool_feedback_notes %}
+      <tr><td>{{ when }}</td><td><code>{{ text }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif subject_tools %}
+  <p class="banner warn">Computation tools are enabled for this subject but switched off
+    app-wide (<code>TOOLS_ENABLED</code>), so no tool instructions or definitions are
+    currently sent.</p>
+  {% else %}
+  <p class="muted">Computation tools are off for this subject — no tool instructions or
+    definitions are sent. You can enable them in the
+    <a href="/admin/subjects/{{ subject.id }}/edit">subject editor</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -59,6 +59,7 @@
   <div class="actions">
     <button type="submit">{{ "Create subject" if creating else "Save" }}</button>
     <a href="/admin/students/{{ student.id }}">Cancel</a>
+    {% if not creating %}<a href="/admin/subjects/{{ subject.id }}/prompts">View exact prompts</a>{% endif %}
   </div>
 </form>
 {% endblock %}

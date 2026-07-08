@@ -166,6 +166,30 @@ def _cached_messages(system: str, history: list[dict]) -> list[dict]:
     return msgs
 
 
+# The gate sees only a bounded tail of the dialogue: the last GATE_HISTORY_TURNS
+# turns, each snipped to GATE_SNIPPET_CHARS characters — enough to judge a short
+# reply in context without re-sending the session.
+GATE_HISTORY_TURNS = 6
+GATE_SNIPPET_CHARS = 600
+
+
+def build_gate_user_message(user_message: str, history: list[dict] | None = None) -> str:
+    """The gate call's user message: optional recent-dialogue context, then the new
+    message to classify. Shared by `run_gate` and the admin prompt-transparency page,
+    so what the parent reads there is byte-for-byte what the model receives."""
+    context = ""
+    if history:
+        lines = []
+        for h in history[-GATE_HISTORY_TURNS:]:
+            who = "Student" if h["role"] == "user" else "Tutor"
+            snippet = h["content"].strip()
+            if len(snippet) > GATE_SNIPPET_CHARS:
+                snippet = snippet[:GATE_SNIPPET_CHARS] + "…"
+            lines.append(f"{who}: {snippet}")
+        context = "Recent conversation in this subject (context only):\n" + "\n".join(lines) + "\n\n"
+    return f"{context}New message from the student to classify:\n{user_message}"
+
+
 def run_gate(model: str, system: str, user_message: str,
              history: list[dict] | None = None) -> tuple[dict, int]:
     """Classify a student message. Returns ({verdict, subject, reason}, tokens).
@@ -177,17 +201,9 @@ def run_gate(model: str, system: str, user_message: str,
     Fails CLOSED: if the model can't produce a valid verdict after a retry, returns
     verdict='error' so the pipeline withholds the tutor rather than guessing.
     """
-    context = ""
-    if history:
-        lines = []
-        for h in history[-6:]:
-            who = "Student" if h["role"] == "user" else "Tutor"
-            snippet = h["content"].strip()
-            lines.append(f"{who}: {snippet[:600] + '…' if len(snippet) > 600 else snippet}")
-        context = "Recent conversation in this subject (context only):\n" + "\n".join(lines) + "\n\n"
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"{context}New message from the student to classify:\n{user_message}"},
+        {"role": "user", "content": build_gate_user_message(user_message, history)},
     ]
     tokens = 0
     last_error: Optional[Exception] = None

@@ -299,7 +299,9 @@ table.grid th, table.grid td {
 table.grid th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
 table.grid tr.inactive td { opacity: 0.55; }
 table.grid code { font-size: 0.85em; }
-.rowactions { display: flex; gap: 0.7rem; align-items: center; white-space: nowrap; }
+/* Wrap the per-row action links onto multiple lines rather than overflowing the
+   table cell (nowrap keeps each individual label, e.g. "Clear history", intact). */
+.rowactions { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: center; white-space: nowrap; }
 .rowactions form { display: inline; }
 
 /* Panels & forms */
@@ -412,6 +414,17 @@ table.grid code { font-size: 0.85em; }
 }
 .admin-footer a { color: var(--muted); }
 .admin-footer a:hover { color: var(--accent); }
+
+/* Prompt-transparency page: verbatim prompt text, shown exactly as sent. */
+.prompt-block {
+  white-space: pre-wrap; word-break: break-word; margin: 0.4rem 0 0.8rem;
+  padding: 0.6rem 0.75rem; background: var(--code-bg); border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem; line-height: 1.45;
+}
+.panel h3 { font-size: 0.9rem; margin: 1rem 0 0.3rem; }
+.prompt-steps { padding-left: 1.2rem; }
+.prompt-steps li { margin: 0.3rem 0; }
 
 /* Sandbox-health banner on the admin dashboard (compute tools broken). */
 .banner.error { background: var(--warn-bg); color: var(--fg); border: 1px solid var(--danger-border); }

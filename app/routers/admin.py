@@ -19,9 +19,9 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from app import auth, clock, model_client, models, pipeline, sandbox, tutor_runtime
+from app import auth, clock, model_client, models, pipeline, sandbox, tools, tutor_runtime
 from app.config import settings
-from app.prompts import build_tutor_system
+from app.prompts import build_gate_system, build_tutor_system
 from app.render import render_tutor_markdown
 from app.security import hash_secret, verify_secret
 from app.seed import DEFAULT_PIN
@@ -596,6 +596,54 @@ def subject_context_save(request: Request, subject_id: int,
     models.update_subject(subject_id, curriculum_context=_clean_str(curriculum_context))
     # Stay on the focused editor (with a saved flag) so the parent can keep working.
     return RedirectResponse(f"/admin/subjects/{subject_id}/context?saved=1", status_code=303)
+
+
+# --------------------------- prompt transparency ---------------------------
+
+@router.get("/subjects/{subject_id}/prompts", response_class=HTMLResponse)
+def subject_prompts(request: Request, subject_id: int, _: bool = Depends(auth.current_admin)):
+    """Read-only view of the EXACT prompt text sent to the models for this subject —
+    assembled by the same functions the live pipeline calls (build_gate_system /
+    build_tutor_system / build_gate_user_message / tool_specs), so the page cannot
+    drift from what a real turn sends. Only the student's own words are replaced
+    with ‹placeholders›."""
+    subject = models.get_subject(subject_id)
+    if subject is None:
+        return RedirectResponse("/admin", status_code=303)
+    student = models.get_student(subject["student_id"])
+    enrolled = list(models.list_subjects(student["id"], active_only=True))
+    if not subject["active"]:
+        # An inactive subject can't take a turn; preview what one WOULD send once
+        # reactivated — it rejoins the enrolled list, in the live query's name order.
+        enrolled = sorted(enrolled + [subject], key=lambda s: s["name"])
+    framing = models.get_setting(models.FRAMING_SETTING_KEY)
+    use_tools = tutor_runtime.tools_active(subject)
+    gate_user_example = model_client.build_gate_user_message(
+        "‹the student's new message›",
+        history=[{"role": "user", "content": "‹an earlier student message›"},
+                 {"role": "assistant", "content": "‹the tutor's reply to it›"}])
+    return templates.TemplateResponse(request, "admin/subject_prompts.html", {
+        "subject": subject,
+        "student": student,
+        "gate_model": settings.gate_model,
+        "tutor_model": pipeline.resolve_tutor_model(subject),
+        "model_inherited": not (subject["tutor_model"] or "").strip(),
+        "subject_tools": bool(subject["tools_enabled"]),
+        "use_tools": use_tools,
+        "gate_system": build_gate_system(subject, enrolled),
+        "gate_user_example": gate_user_example,
+        "tutor_system": build_tutor_system(student, subject, tools_enabled=use_tools,
+                                           framing=framing),
+        "tool_specs_json": json.dumps(tools.tool_specs(), indent=2) if use_tools else None,
+        "tool_feedback_notes": tools.MODEL_FEEDBACK_NOTES if use_tools else None,
+        "gate_history_turns": model_client.GATE_HISTORY_TURNS,
+        "gate_snippet_chars": model_client.GATE_SNIPPET_CHARS,
+        "max_history_turns": pipeline.MAX_HISTORY_TURNS,
+        # History trims back to MAX_HISTORY_TURNS in whole steps, so between chops the
+        # model can see up to this many retained turns — the honest ceiling to publish.
+        "max_history_kept": pipeline.MAX_HISTORY_TURNS + pipeline.HISTORY_TRIM_STEP - 1,
+        "max_history_tokens": pipeline.MAX_HISTORY_TOKENS,
+    })
 
 
 # -------------------------- conversation log viewer ------------------------
