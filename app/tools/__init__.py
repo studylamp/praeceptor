@@ -172,15 +172,18 @@ _REGISTRY: dict[str, dict[str, Any]] = {
             "function": {
                 "name": "verify",
                 "description": (
-                    "Deterministically CHECK a math result BEFORE you state it to the "
-                    "student — the server runs the check exactly, so use it to confirm a "
-                    "final answer rather than trusting your own arithmetic. claim_type: "
-                    "'equal' (expr == expected), 'solves' (equation's solutions == expected "
-                    "list), 'derivative' (d/dvar expr == expected), 'integral' (expected is "
-                    "an antiderivative of expr), 'value' (expr at variable=point == "
-                    "expected). Give operands as plain math strings, e.g. expr='x**2', "
-                    "expected='2*x'. Returns whether it holds; if it does not, fix your "
-                    "answer before replying."
+                    "Deterministically check a math claim: the server builds the check "
+                    "and runs it exactly in sympy. claim_type: 'equal' (expr == expected), "
+                    "'solves' (equation's solutions == expected list), 'derivative' "
+                    "(d/dvar expr == expected), 'integral' (expected is an antiderivative "
+                    "of expr), 'value' (expr at variable=point == expected; requires "
+                    "point). Give operands as plain math strings, e.g. expr='x**2', "
+                    "expected='2*x'. 'solves' works over the complex numbers and compares "
+                    "the whole solution set, so a real-only answer to an equation with "
+                    "complex roots will not verify. Returns whether the claim holds, with "
+                    "a detail line when one is available. A failed check usually means the "
+                    "claim is wrong, but can also be a correct answer in a form sympy "
+                    "could not reduce."
                 ),
                 "parameters": {
                     "type": "object",
@@ -207,13 +210,16 @@ _REGISTRY: dict[str, dict[str, Any]] = {
             "function": {
                 "name": "python",
                 "description": (
-                    "Run Python to compute or VERIFY math exactly — never do nontrivial "
-                    "arithmetic, algebra, or calculus in your head. Pre-imported nothing; "
-                    "`import` what you need. Available: sympy (exact/symbolic algebra & "
-                    "calculus), numpy, and the math module. Use print() to return results "
-                    "(only stdout comes back). No network, no file/disk access, a few "
-                    "seconds of CPU. Use it to check an equation, solve, differentiate, "
-                    "integrate, factor, or confirm a student's answer before responding."
+                    "Run Python in a sandbox to compute or check math exactly. Nothing is "
+                    "pre-imported; `import` what you need. Available: sympy (exact/symbolic "
+                    "algebra & calculus), numpy, matplotlib, and the math module. Only "
+                    "stdout comes back, so print() the results you need. Figures drawn "
+                    "with matplotlib are captured automatically and shown to the student "
+                    "as vector graphics; you never see the image, only a note of how many "
+                    "were shown, and you don't need to save or print them. No network, no "
+                    "file/disk access, a few seconds of CPU. Use it to solve, simplify, "
+                    "factor, differentiate, integrate, evaluate, check a student's answer, "
+                    "or draw a function graph or data plot."
                 ),
                 "parameters": {
                     "type": "object",

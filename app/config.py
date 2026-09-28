@@ -41,7 +41,7 @@ class Settings:
     # move every inheriting subject at once.
     gate_model: str = os.getenv("GATE_MODEL", "anthropic/claude-haiku-4-5")
     tutor_model_default: str = os.getenv(
-        "TUTOR_MODEL_DEFAULT", "anthropic/claude-sonnet-5"
+        "TUTOR_MODEL_DEFAULT", "anthropic/claude-sonnet-5-5"
     )
     # Prompt-cache TTL for the tutor's cached prefix (Anthropic): "1h" (default) or "5m".
     # 1h costs 2x (vs 1.25x) to WRITE the cache but keeps it warm across the longer

@@ -18,13 +18,14 @@ from app.config import settings
 litellm.telemetry = False
 litellm.drop_params = True
 
-# Completion ceiling for tutor replies. Generous so a thorough answer — a full worked
-# example with every step, or an explanation PLUS a detailed inline SVG/plot (gridlines,
-# labels, many sampled points) — isn't truncated mid-thought (a cut-off SVG renders
-# broken). 4000 was too low: a genuinely complete answer can run past it. The tutor path
-# streams (no SDK HTTP-timeout concern) and the non-streaming fallback stays within the
-# safe ~16K window; Sonnet 5 allows up to 64K output. Daily token caps still bound overall
-# usage — this is only a per-reply ceiling, and typical replies are far shorter.
+# Output ceiling per tutor call. It covers the model's THINKING as well as the visible
+# reply: no `thinking` param is sent, and Claude Sonnet 5/5.5 run adaptive thinking when it
+# is omitted, so thinking tokens share this budget with the reply text. Generous so a
+# thorough answer — a full worked example, or an explanation PLUS a detailed inline SVG
+# — isn't truncated mid-thought (a cut-off SVG renders broken). Kept at the non-streaming
+# safe ~16K window (run_tutor and the tools rounds are non-streaming) and under the
+# output caps of other providers' models. A finish_reason of "length" in the admin turn
+# diagnostics is the signal this is too low. Daily token caps still bound overall usage.
 TUTOR_MAX_TOKENS = 16000
 
 # --- Prompt caching (multi-turn tutor sessions) ---------------------------------
@@ -400,10 +401,28 @@ def _emit_pieces(prior: list[str], content: str) -> list[str]:
     return pieces
 
 
-def _assistant_msg(content: str, tool_calls) -> dict:
-    """Rebuild the assistant turn (text + tool calls) to append to the running messages
-    list, in the OpenAI tool-call shape LiteLLM translates per provider."""
-    return {
+def _replay_thinking(msg, content: str) -> list | None:
+    """Thinking blocks to send back, unchanged, with this round's assistant turn.
+
+    Claude models that think by default (Sonnet 5/5.5) should get a tool round's
+    thinking blocks back — empty ones included — so the next round keeps its reasoning,
+    and Sonnet 5.5 signs each block over the conversation before it, so a block
+    replayed out of its original position fails the API's history check. LiteLLM
+    re-emits `thinking_blocks` ahead of the turn's text and doesn't keep the original
+    block order, so replay only when that order can't have differed: a round with no
+    text is always [thinking..., tool_use...]. A round that also wrote text drops its
+    blocks instead (the API accepts that; it only loses the round's reasoning)."""
+    blocks = getattr(msg, "thinking_blocks", None)
+    if not blocks or content:
+        return None
+    return list(blocks)
+
+
+def _assistant_msg(content: str, tool_calls, thinking_blocks: list | None = None) -> dict:
+    """Rebuild the assistant turn (text + tool calls, plus any thinking blocks to
+    replay) to append to the running messages list, in the OpenAI tool-call shape
+    LiteLLM translates per provider."""
+    turn = {
         "role": "assistant",
         "content": content or "",
         "tool_calls": [
@@ -412,6 +431,9 @@ def _assistant_msg(content: str, tool_calls) -> dict:
             for tc in tool_calls
         ],
     }
+    if thinking_blocks:
+        turn["thinking_blocks"] = thinking_blocks
+    return turn
 
 
 async def run_tutor_tools_stream(
@@ -423,12 +445,14 @@ async def run_tutor_tools_stream(
     per-round activity: `{"status": "model", "round": N}` as each model round starts
     (rounds resolve non-streaming, so this is the only signal while one generates),
     `{"status": "tool", "tool": name}` while a tool runs, and `{"status": "wrap"}`
-    before the forced tools-off wrap-up round.
+    before the forced no-tool-call wrap-up round.
 
     Tool rounds are resolved with non-streaming calls (assembling streamed tool-call
     arguments across providers is fragile); each round's text is emitted in chunks so
     the bubble still fills progressively. After at most `settings.tool_max_rounds`, a
-    final tools-disabled call guarantees a worded answer instead of an endless loop.
+    final `tool_choice="none"` call guarantees a worded answer instead of an endless
+    loop. Every round sends the same `tools` list: the turn stays append-only (a
+    changed tools array is a history edit that invalidates replayed thinking blocks).
 
     Raises ModelError if the FIRST call fails before any content (so the caller shows
     the friendly error); a later failure stops gracefully with `partial: True`.
@@ -444,18 +468,21 @@ async def run_tutor_tools_stream(
     partial = False
     max_rounds = max(1, settings.tool_max_rounds)
 
-    async def _complete(use_tools: bool, first: bool):
+    async def _complete(tool_choice: str, first: bool):
+        """One model round. Returns the message, or None on failure."""
         nonlocal tokens, prompt_tokens, completion_tokens, finish_reason
         nonlocal cache_read, cache_creation
-        kwargs = dict(model=model, messages=messages, max_tokens=TUTOR_MAX_TOKENS, timeout=90)
-        if use_tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+        kwargs = dict(model=model, messages=messages, max_tokens=TUTOR_MAX_TOKENS, timeout=90,
+                      tools=tools, tool_choice=tool_choice)
         try:
             resp = await litellm.acompletion(**kwargs)
         except Exception as e:  # noqa: BLE001
             if first:
                 raise ModelError(f"tutor request failed: {e}") from e
+            # A later round failing ends the turn as a partial reply; log the cause (e.g.
+            # a provider rejecting the replayed history) so it isn't silent.
+            print(f"ERROR [praeceptor]: tutor tool round failed — {type(e).__name__}: {e}",
+                  file=sys.stderr, flush=True)
             return None
         try:
             choice = resp.choices[0]
@@ -476,7 +503,7 @@ async def run_tutor_tools_stream(
         # A round is one non-streaming call — nothing else reaches the UI until it
         # completes, so announce the round to keep the client's indicator alive.
         yield {"status": "model", "round": round_i + 1}
-        msg = await _complete(use_tools=True, first=(round_i == 0))
+        msg = await _complete("auto", first=(round_i == 0))
         if msg is None:
             partial = bool(reply_parts)
             break
@@ -493,7 +520,7 @@ async def run_tutor_tools_stream(
         # tool_call object (missing .id/.function) must degrade to a graceful partial
         # stop, not escape as an uncaught 500 mid-stream.
         try:
-            messages.append(_assistant_msg(content, tool_calls))
+            messages.append(_assistant_msg(content, tool_calls, _replay_thinking(msg, content)))
             for tc in tool_calls:
                 name = tc.function.name
                 try:
@@ -522,17 +549,19 @@ async def run_tutor_tools_stream(
             break
     else:
         # Rounds exhausted with tool calls still pending — force a worded wrap-up with
-        # tools disabled so we never end on an unanswered tool round.
-        finish_reason = "max_tool_rounds"
+        # tool_choice "none" (same tools list) so we never end on an unanswered round.
         yield {"status": "wrap"}
-        msg = await _complete(use_tools=False, first=False)
-        if msg is not None:
-            content = (getattr(msg, "content", None) or "")
-            if content:
-                for piece in _emit_pieces(reply_parts, content):
-                    yield piece
-                reply_parts.append(content)
-        partial = partial or not reply_parts
+        msg = await _complete("none", first=False)
+        content = (getattr(msg, "content", None) or "") if msg is not None else ""
+        if content:
+            for piece in _emit_pieces(reply_parts, content):
+                yield piece
+            reply_parts.append(content)
+        # Set after the call (_complete records the wrap-up's own finish_reason). A
+        # wrap-up with no text is partial: some providers (e.g. Bedrock Converse) drop
+        # tool_choice "none" and may answer with another tool call instead.
+        finish_reason = "max_tool_rounds"
+        partial = partial or not content
 
     # Charge the daily cap: discount cached reads and up-weight cache writes so it
     # tracks real cost (each round re-sends a growing context, but the stable prefix

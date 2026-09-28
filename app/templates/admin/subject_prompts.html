@@ -74,10 +74,12 @@ subject rejoining the enrolled-subjects list in the gate prompt).</p>
     subject — their descriptions are instructions the model reads. Tool code and results
     pass only between the tutor and the sandbox; the student sees the tutor's explanation
     and any figures, never the code. (Two exceptions: after too many tool rounds in a
-    single turn, a final wrap-up call runs without the tools so the turn always ends in a
-    worded answer; and if a browser has JavaScript turned off, the app falls back to a
+    single turn, a final wrap-up call is made with tool calls switched off — the tool
+    definitions stay attached, but the tutor can't call them — so the turn always ends in
+    a worded answer; and if a browser has JavaScript turned off, the app falls back to a
     simpler mode where the tutor answers without tools — that fallback also omits the
-    "Computation tools" section of the system prompt above.)</p>
+    "Computation tools" section of the system prompt above, and its picture guideline
+    goes back to offering hand-drawn SVG graphs and charts, with the SVG plotting tips.)</p>
   <pre class="prompt-block">{{ tool_specs_json }}</pre>
   <h3>Fixed notes Praeceptor can add to a tool result</h3>
   <p class="muted">A tool's result goes back to the tutor as JSON: the code's own printed

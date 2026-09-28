@@ -33,6 +33,7 @@ router = APIRouter(prefix="/admin")
 # Model strings offered as quick suggestions in the subject form (free-text though —
 # any LiteLLM `provider/model` works).
 MODEL_SUGGESTIONS = (
+    "anthropic/claude-sonnet-5-5",
     "anthropic/claude-sonnet-5",
     "anthropic/claude-haiku-4-5",
 )
