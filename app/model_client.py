@@ -1,5 +1,5 @@
 """All inference goes through here, via LiteLLM, so the provider is configuration.
-Model strings are LiteLLM format, e.g. `anthropic/claude-haiku-4-5`.
+Model strings are LiteLLM format, e.g. `anthropic/claude-haiku-5-5`.
 
 Two entry points: `run_gate` (strict-JSON classifier) and `run_tutor` (free text).
 Both return (result, tokens) so the pipeline can enforce per-student token caps.
@@ -78,6 +78,13 @@ def _content(resp) -> str:
         return resp.choices[0].message.content or ""
     except (AttributeError, IndexError):
         return ""
+
+
+def _finish_reason(resp) -> Optional[str]:
+    try:
+        return resp.choices[0].finish_reason
+    except (AttributeError, IndexError):
+        return None
 
 
 def _tokens(resp) -> int:
@@ -210,6 +217,12 @@ def run_gate(model: str, system: str, user_message: str,
     last_error: Optional[Exception] = None
     for _ in range(2):
         try:
+            # 300 covers the verdict JSON alone (~100-125 tokens on Haiku 5.5's tokenizer).
+            # That holds because LiteLLM sends Anthropic `response_format` as a FORCED tool
+            # call, and Haiku 5.5 doesn't think before a forced tool call. Don't add
+            # `reasoning_effort` or enabled thinking here: LiteLLM then un-forces the tool (and, with
+            # its bundled model map, sends a budget_tokens Haiku 5.5 rejects); thinking
+            # would also need far more than 300 tokens.
             resp = litellm.completion(
                 model=model,
                 messages=messages,
@@ -224,12 +237,21 @@ def run_gate(model: str, system: str, user_message: str,
             last_error = e
             continue
         tokens += _tokens(resp)
+        if _finish_reason(resp) == "content_filter":
+            # The model's safety classifier declined (Anthropic stop_reason "refusal").
+            # A retry usually refuses again, so fail closed now, with a reason the
+            # parent can see in the transcript.
+            return {"verdict": "error", "subject": None, "error_kind": "unclassified",
+                    "reason": "gate model declined to classify the message (safety refusal)"}, tokens
         try:
             data = json.loads(_content(resp))
         except (json.JSONDecodeError, TypeError):
             last_error = None  # the model WAS reachable; its output was just unusable
             continue
-        if isinstance(data, dict) and data.get("verdict") in VERDICTS:
+        # All three schema fields must be present: a reply cut off after "verdict" (e.g.
+        # by a refusal mid-tool-call, which LiteLLM reports as "stop") is unusable.
+        if (isinstance(data, dict) and data.get("verdict") in VERDICTS
+                and "subject" in data and "reason" in data):
             subject = data.get("subject")
             return {
                 "verdict": data["verdict"],

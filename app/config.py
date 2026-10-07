@@ -39,7 +39,7 @@ class Settings:
     # override — see pipeline.resolve_tutor_model. Bump these on a model release, then
     # restart (Docker: `docker compose up -d` — a plain restart doesn't re-read .env) to
     # move every inheriting subject at once.
-    gate_model: str = os.getenv("GATE_MODEL", "anthropic/claude-haiku-4-5")
+    gate_model: str = os.getenv("GATE_MODEL", "anthropic/claude-haiku-5-5")
     tutor_model_default: str = os.getenv(
         "TUTOR_MODEL_DEFAULT", "anthropic/claude-sonnet-5-5"
     )
